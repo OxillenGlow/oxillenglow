@@ -1,4 +1,4 @@
-# Hi
+# Hi, o/
 
 I am just another random guy. I just use this github account mostly for coding (my idea of a perfect) game, something i had always wanted to do.
 
