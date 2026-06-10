@@ -1,0 +1,1637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2D Town Defender - A* Pathfinding RTS</title>
+    <style>
+        :root {
+            --bg: #1a1a2e;
+            --surface: #16213e;
+            --text: #e0e0e0;
+            --accent: #4da6ff;
+            --danger: #ff4d4d;
+            --gold: #ffc107;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: var(--bg);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', 'Inter', system-ui, sans-serif;
+            overflow-y: auto;
+            padding: 10px;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .game-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            max-width: 820px;
+            width: 100%;
+        }
+
+        .game-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            max-width: 800px;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .town-stats {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .stat-card {
+            background: var(--surface);
+            border-radius: 12px;
+            padding: 10px 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border: 2px solid transparent;
+            transition: border-color 0.3s;
+            min-width: 120px;
+        }
+
+        .stat-card.player {
+            border-color: #4488ee;
+        }
+        .stat-card.enemy {
+            border-color: #ee4444;
+        }
+
+        .stat-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            font-weight: bold;
+            color: #fff;
+        }
+        .stat-card.player .stat-icon {
+            background: #4488ee;
+        }
+        .stat-card.enemy .stat-icon {
+            background: #ee4444;
+        }
+
+        .stat-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .stat-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #aaa;
+        }
+        .stat-value {
+            font-size: 16px;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .game-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 13px;
+            letter-spacing: 0.5px;
+            transition: all 0.2s;
+            font-family: inherit;
+            text-transform: uppercase;
+        }
+        .btn-reset {
+            background: #e74c3c;
+            color: #fff;
+        }
+        .btn-reset:hover {
+            background: #c0392b;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(231, 76, 60, 0.4);
+        }
+        .btn-info {
+            background: var(--surface);
+            color: var(--text);
+            border: 1px solid #555;
+            cursor: default;
+            font-size: 11px;
+            pointer-events: none;
+        }
+
+        canvas {
+            border-radius: 12px;
+            cursor: crosshair;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            display: block;
+            max-width: 100%;
+            height: auto;
+            border: 2px solid #333;
+            background: #2d5a27;
+        }
+
+        .instructions {
+            color: #999;
+            font-size: 12px;
+            text-align: center;
+            letter-spacing: 0.5px;
+            line-height: 1.6;
+        }
+        .instructions span {
+            color: #ffc107;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-wrapper">
+        <div class="game-header">
+            <div class="town-stats">
+                <div class="stat-card player" id="playerStats">
+                    <div class="stat-icon">🏰</div>
+                    <div class="stat-info">
+                        <span class="stat-label">Your Town</span>
+                        <span class="stat-value" id="playerBuildings">4 🏠 | 8 ⚔️</span>
+                    </div>
+                </div>
+                <div class="stat-card enemy" id="enemyStats">
+                    <div class="stat-icon">🔥</div>
+                    <div class="stat-info">
+                        <span class="stat-label">Enemy Town</span>
+                        <span class="stat-value" id="enemyBuildings">4 🏠 | 8 ⚔️</span>
+                    </div>
+                </div>
+            </div>
+            <div class="game-controls">
+                <span class="btn btn-info" id="statusText">⚡ Select units</span>
+                <button class="btn btn-reset" onclick="game.reset()">🔄 Restart</button>
+            </div>
+        </div>
+        <canvas id="gameCanvas"></canvas>
+        <div class="instructions">
+            <span>🖱️ Drag</span> to select units &nbsp;|&nbsp;
+            <span>🖱️ Click</span> to move selected &nbsp;|&nbsp;
+            <span>🖱️ Right-click</span> to move/attack &nbsp;|&nbsp;
+            <span>⚔️</span> Protect your buildings!
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            // ──────────────────────────────────────
+            // CONSTANTS
+            // ──────────────────────────────────────
+            const GRID_SIZE = 20;
+            const COLS = 40;
+            const ROWS = 30;
+            const CANVAS_WIDTH = COLS * GRID_SIZE;
+            const CANVAS_HEIGHT = ROWS * GRID_SIZE;
+            const BUILDING_SIZE = 3; // 3x3 grid cells per building
+            const UNIT_SIZE = 14; // pixel size of unit square
+            const UNIT_SPEED = 100; // pixels per second
+            const UNIT_HP = 60;
+            const UNIT_DAMAGE = 10;
+            const UNIT_ATTACK_CD = 0.7; // seconds between attacks
+            const UNIT_ATTACK_RANGE = 1.8; // grid cells
+            const BUILDING_HP = 200;
+            const BUILDING_DAMAGE = 15;
+
+            // ──────────────────────────────────────
+            // CANVAS SETUP
+            // ──────────────────────────────────────
+            const canvas = document.getElementById('gameCanvas');
+            canvas.width = CANVAS_WIDTH;
+            canvas.height = CANVAS_HEIGHT;
+            const ctx = canvas.getContext('2d');
+
+            // ──────────────────────────────────────
+            // GAME STATE
+            // ──────────────────────────────────────
+            let grid = []; // 2D array: 0=walkable, 1=blocked(building)
+            let buildings = [];
+            let units = [];
+            let particles = [];
+            let selectedUnits = [];
+            let gameOver = false;
+            let gameResult = '';
+            let gameTime = 0;
+            let aiTimer = 4; // seconds until next AI wave
+            let aiWaveSize = 2;
+
+            // Selection state
+            let isDragging = false;
+            let dragStartX = 0;
+            let dragStartY = 0;
+            let dragCurrentX = 0;
+            let dragCurrentY = 0;
+            let hasDragged = false;
+            const DRAG_THRESHOLD = 4; // pixels before it counts as a drag
+
+            // ──────────────────────────────────────
+            // GRID FUNCTIONS
+            // ──────────────────────────────────────
+            function initGrid() {
+                grid = [];
+                for (let row = 0; row < ROWS; row++) {
+                    grid[row] = new Array(COLS).fill(0);
+                }
+            }
+
+            function markBuildingOnGrid(building, blocked) {
+                for (let r = building.gridY; r < building.gridY + building.height; r++) {
+                    for (let c = building.gridX; c < building.gridX + building.width; c++) {
+                        if (r >= 0 && r < ROWS && c >= 0 && c < COLS) {
+                            grid[r][c] = blocked ? 1 : 0;
+                        }
+                    }
+                }
+            }
+
+            function isWalkable(gridCol, gridRow) {
+                if (gridRow < 0 || gridRow >= ROWS || gridCol < 0 || gridCol >= COLS) return false;
+                return grid[gridRow][gridCol] === 0;
+            }
+
+            function getGridCell(px, py) {
+                const col = Math.floor(px / GRID_SIZE);
+                const row = Math.floor(py / GRID_SIZE);
+                return { col: Math.max(0, Math.min(COLS - 1, col)), row: Math.max(0, Math.min(ROWS - 1, row)) };
+            }
+
+            function gridToPixelCenter(col, row) {
+                return { x: col * GRID_SIZE + GRID_SIZE / 2, y: row * GRID_SIZE + GRID_SIZE / 2 };
+            }
+
+            // ──────────────────────────────────────
+            // A* PATHFINDING (8-directional)
+            // ──────────────────────────────────────
+            function astar(startCol, startRow, goalCol, goalRow, gridRef) {
+                // If start or goal is blocked, return null
+                if (gridRef[startRow][startCol] !== 0 || gridRef[goalRow][goalCol] !== 0) {
+                    return null;
+                }
+                if (startCol === goalCol && startRow === goalRow) {
+                    return [{ x: goalCol, y: goalRow }];
+                }
+
+                const openSet = new Map();
+                const closedSet = new Set();
+                const gScore = new Map();
+                const parent = new Map();
+
+                const key = (c, r) => r * COLS + c;
+                const startKey = key(startCol, startRow);
+                const goalKey = key(goalCol, goalRow);
+
+                gScore.set(startKey, 0);
+                const h = heuristic(startCol, startRow, goalCol, goalRow);
+                openSet.set(startKey, { col: startCol, row: startRow, f: h });
+
+                // 8 directions: cardinal + diagonal
+                const dirs = [
+                    { dc: 0, dr: -1, cost: 1 }, { dc: 1, dr: -1, cost: 1.414 }, { dc: 1, dr: 0, cost: 1 },
+                    { dc: 1, dr: 1, cost: 1.414 }, { dc: 0, dr: 1, cost: 1 }, { dc: -1, dr: 1, cost: 1.414 },
+                    { dc: -1, dr: 0, cost: 1 }, { dc: -1, dr: -1, cost: 1.414 }
+                ];
+
+                let iterations = 0;
+                const maxIterations = COLS * ROWS * 2;
+
+                while (openSet.size > 0 && iterations < maxIterations) {
+                    iterations++;
+                    // Find node with lowest f-score
+                    let bestKey = null;
+                    let bestF = Infinity;
+                    for (const [k, node] of openSet) {
+                        if (node.f < bestF) {
+                            bestF = node.f;
+                            bestKey = k;
+                        }
+                    }
+
+                    const current = openSet.get(bestKey);
+                    openSet.delete(bestKey);
+
+                    if (current.col === goalCol && current.row === goalRow) {
+                        // Reconstruct path
+                        const path = [];
+                        let k = bestKey;
+                        while (k !== startKey) {
+                            const p = parent.get(k);
+                            path.unshift({ x: p.col, y: p.row });
+                            k = key(p.col, p.row);
+                        }
+                        path.push({ x: goalCol, y: goalRow });
+                        // Remove the start position from path (it's where we already are)
+                        if (path.length > 0 && path[0].x === startCol && path[0].y === startRow) {
+                            path.shift();
+                        }
+                        return path;
+                    }
+
+                    closedSet.add(bestKey);
+                    const gCurr = gScore.get(bestKey) || 0;
+
+                    for (const dir of dirs) {
+                        const nc = current.col + dir.dc;
+                        const nr = current.row + dir.dr;
+                        const nKey = key(nc, nr);
+
+                        if (closedSet.has(nKey)) continue;
+                        if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
+                        if (gridRef[nr][nc] !== 0) continue;
+
+                        // For diagonal moves, prevent corner-cutting through blocked cells
+                        if (dir.dc !== 0 && dir.dr !== 0) {
+                            if (gridRef[current.row][nc] !== 0 || gridRef[nr][current.col] !== 0) {
+                                continue;
+                            }
+                        }
+
+                        const tentativeG = gCurr + dir.cost;
+                        const existingG = gScore.get(nKey);
+
+                        if (existingG === undefined || tentativeG < existingG) {
+                            gScore.set(nKey, tentativeG);
+                            const f = tentativeG + heuristic(nc, nr, goalCol, goalRow);
+                            openSet.set(nKey, { col: nc, row: nr, f });
+                            parent.set(nKey, { col: current.col, row: current.row });
+                        }
+                    }
+                }
+
+                return null; // No path found
+            }
+
+            function heuristic(c1, r1, c2, r2) {
+                const dc = Math.abs(c1 - c2);
+                const dr = Math.abs(r1 - r2);
+                // Octile distance for 8-directional movement
+                return Math.max(dc, dr) + (Math.SQRT2 - 1) * Math.min(dc, dr);
+            }
+
+            // Find nearest walkable cell adjacent to a building
+            function findAdjacentWalkable(building, preferCol, preferRow) {
+                const candidates = [];
+                const bx = building.gridX;
+                const by = building.gridY;
+                const bw = building.width;
+                const bh = building.height;
+
+                // Check perimeter cells
+                for (let c = bx - 1; c <= bx + bw; c++) {
+                    const rTop = by - 1;
+                    const rBot = by + bh;
+                    if (isWalkable(c, rTop)) candidates.push({ col: c, row: rTop });
+                    if (isWalkable(c, rBot)) candidates.push({ col: c, row: rBot });
+                }
+                for (let r = by; r < by + bh; r++) {
+                    const cLeft = bx - 1;
+                    const cRight = bx + bw;
+                    if (isWalkable(cLeft, r)) candidates.push({ col: cLeft, row: r });
+                    if (isWalkable(cRight, r)) candidates.push({ col: cRight, row: r });
+                }
+
+                if (candidates.length === 0) {
+                    // Fallback: find any nearby walkable cell
+                    for (let dr = -4; dr <= 4; dr++) {
+                        for (let dc = -4; dc <= 4; dc++) {
+                            const c = bx + dc;
+                            const r = by + dr;
+                            if (isWalkable(c, r)) candidates.push({ col: c, row: r });
+                        }
+                    }
+                }
+
+                if (candidates.length === 0) return null;
+
+                // Sort by distance to preferred position
+                candidates.sort((a, b) => {
+                    const da = Math.abs(a.col - preferCol) + Math.abs(a.row - preferRow);
+                    const db = Math.abs(b.col - preferCol) + Math.abs(b.row - preferRow);
+                    return da - db;
+                });
+                return candidates[0];
+            }
+
+            // ──────────────────────────────────────
+            // BUILDING CLASS
+            // ──────────────────────────────────────
+            class Building {
+                constructor(id, gridX, gridY, width, height, owner) {
+                    this.id = id;
+                    this.gridX = gridX;
+                    this.gridY = gridY;
+                    this.width = width;
+                    this.height = height;
+                    this.owner = owner; // 'player' or 'ai'
+                    this.hp = BUILDING_HP;
+                    this.maxHp = BUILDING_HP;
+                    this.alive = true;
+                }
+
+                get centerPixelX() {
+                    return (this.gridX + this.width / 2) * GRID_SIZE;
+                }
+                get centerPixelY() {
+                    return (this.gridY + this.height / 2) * GRID_SIZE;
+                }
+
+                containsGrid(col, row) {
+                    return col >= this.gridX && col < this.gridX + this.width &&
+                        row >= this.gridY && row < this.gridY + this.height;
+                }
+
+                takeDamage(amount) {
+                    this.hp -= amount;
+                    if (this.hp <= 0) {
+                        this.hp = 0;
+                        this.alive = false;
+                        markBuildingOnGrid(this, false); // Free up grid cells
+                        spawnDestructionParticles(this.centerPixelX, this.centerPixelY, this.owner);
+                        return true; // destroyed
+                    }
+                    return false;
+                }
+            }
+
+            // ──────────────────────────────────────
+            // UNIT CLASS
+            // ──────────────────────────────────────
+            class Unit {
+                constructor(id, pixelX, pixelY, owner) {
+                    this.id = id;
+                    this.x = pixelX;
+                    this.y = pixelY;
+                    this.owner = owner; // 'player' or 'ai'
+                    this.hp = UNIT_HP;
+                    this.maxHp = UNIT_HP;
+                    this.speed = UNIT_SPEED;
+                    this.damage = UNIT_DAMAGE;
+                    this.attackCooldown = UNIT_ATTACK_CD;
+                    this.attackTimer = 0;
+                    this.path = [];
+                    this.pathIndex = 0;
+                    this.targetBuilding = null;
+                    this.alive = true;
+                    this.selected = false;
+                    this.attackFlash = 0;
+                }
+
+                get gridCol() {
+                    return Math.floor(this.x / GRID_SIZE);
+                }
+                get gridRow() {
+                    return Math.floor(this.y / GRID_SIZE);
+                }
+
+                setPath(newPath) {
+                    this.path = newPath || [];
+                    this.pathIndex = 0;
+                    this.targetBuilding = null;
+                }
+
+                setTargetBuilding(building) {
+                    this.targetBuilding = building;
+                    const cell = findAdjacentWalkable(building, this.gridCol, this.gridRow);
+                    if (cell) {
+                        const path = astar(this.gridCol, this.gridRow, cell.col, cell.row, grid);
+                        this.path = path || [];
+                        this.pathIndex = 0;
+                    } else {
+                        this.path = [];
+                    }
+                }
+
+                update(dt) {
+                    if (!this.alive) return;
+
+                    // Update attack timer
+                    if (this.attackTimer > 0) {
+                        this.attackTimer -= dt;
+                    }
+                    if (this.attackFlash > 0) {
+                        this.attackFlash -= dt;
+                    }
+
+                    // Follow path
+                    if (this.path.length > 0 && this.pathIndex < this.path.length) {
+                        const nextNode = this.path[this.pathIndex];
+                        const targetPx = gridToPixelCenter(nextNode.x, nextNode.y);
+                        const dx = targetPx.x - this.x;
+                        const dy = targetPx.y - this.y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+
+                        if (dist < 3) {
+                            // Reached this waypoint
+                            this.pathIndex++;
+                            if (this.pathIndex >= this.path.length) {
+                                this.path = [];
+                                this.pathIndex = 0;
+                                // If we were targeting a building, we're now adjacent to it
+                            }
+                        } else {
+                            // Move toward waypoint
+                            const moveAmount = this.speed * dt;
+                            const ratio = Math.min(moveAmount / dist, 1);
+                            this.x += dx * ratio;
+                            this.y += dy * ratio;
+                        }
+                    }
+
+                    // Clamp to map bounds
+                    this.x = Math.max(UNIT_SIZE / 2, Math.min(CANVAS_WIDTH - UNIT_SIZE / 2, this.x));
+                    this.y = Math.max(UNIT_SIZE / 2, Math.min(CANVAS_HEIGHT - UNIT_SIZE / 2, this.y));
+                }
+
+                takeDamage(amount) {
+                    this.hp -= amount;
+                    this.attackFlash = 0.15;
+                    if (this.hp <= 0) {
+                        this.hp = 0;
+                        this.alive = false;
+                        this.selected = false;
+                        spawnDeathParticles(this.x, this.y, this.owner);
+                        return true;
+                    }
+                    return false;
+                }
+
+                distanceTo(otherUnit) {
+                    const dx = this.x - otherUnit.x;
+                    const dy = this.y - otherUnit.y;
+                    return Math.sqrt(dx * dx + dy * dy);
+                }
+
+                distanceToBuilding(building) {
+                    // Closest distance from unit to building rectangle
+                    const bx = building.gridX * GRID_SIZE;
+                    const by = building.gridY * GRID_SIZE;
+                    const bw = building.width * GRID_SIZE;
+                    const bh = building.height * GRID_SIZE;
+                    const cx = Math.max(bx, Math.min(this.x, bx + bw));
+                    const cy = Math.max(by, Math.min(this.y, by + bh));
+                    const dx = this.x - cx;
+                    const dy = this.y - cy;
+                    return Math.sqrt(dx * dx + dy * dy);
+                }
+            }
+
+            // ──────────────────────────────────────
+            // PARTICLE SYSTEM
+            // ──────────────────────────────────────
+            class Particle {
+                constructor(x, y, color, life, vx, vy, size) {
+                    this.x = x;
+                    this.y = y;
+                    this.color = color;
+                    this.life = life;
+                    this.maxLife = life;
+                    this.vx = vx || 0;
+                    this.vy = vy || 0;
+                    this.size = size || 3;
+                    this.alive = true;
+                }
+
+                update(dt) {
+                    this.life -= dt;
+                    if (this.life <= 0) this.alive = false;
+                    this.x += this.vx * dt;
+                    this.y += this.vy * dt;
+                    this.vy += 60 * dt; // gravity
+                }
+
+                draw(ctx) {
+                    const alpha = Math.max(0, this.life / this.maxLife);
+                    const size = this.size * alpha;
+                    ctx.fillStyle = this.color.replace('1)', `${alpha})`).replace('rgb',
+                        'rgba');
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, size, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            function spawnDestructionParticles(x, y, owner) {
+                const color = owner === 'player' ? 'rgb(255,180,50)' : 'rgb(255,80,50)';
+                for (let i = 0; i < 25; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = 40 + Math.random() * 180;
+                    const vx = Math.cos(angle) * speed;
+                    const vy = Math.sin(angle) * speed - 60;
+                    particles.push(new Particle(x, y, color, 0.6 + Math.random() * 0.8, vx, vy, 2 + Math.random() *
+                        5));
+                }
+            }
+
+            function spawnDeathParticles(x, y, owner) {
+                const color = owner === 'player' ? 'rgb(100,180,255)' : 'rgb(255,100,100)';
+                for (let i = 0; i < 10; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = 20 + Math.random() * 80;
+                    const vx = Math.cos(angle) * speed;
+                    const vy = Math.sin(angle) * speed - 30;
+                    particles.push(new Particle(x, y, color, 0.3 + Math.random() * 0.5, vx, vy, 1.5 + Math.random() *
+                        3));
+                }
+            }
+
+            function spawnAttackParticles(x, y, attackerOwner) {
+                const color = attackerOwner === 'player' ? 'rgb(200,220,255)' : 'rgb(255,200,180)';
+                for (let i = 0; i < 5; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = 15 + Math.random() * 50;
+                    const vx = Math.cos(angle) * speed;
+                    const vy = Math.sin(angle) * speed;
+                    particles.push(new Particle(x, y, color, 0.15 + Math.random() * 0.3, vx, vy, 1 + Math.random() * 3));
+                }
+            }
+
+            // ──────────────────────────────────────
+            // GAME INITIALIZATION
+            // ──────────────────────────────────────
+            function createBuildings() {
+                buildings = [];
+                let bid = 0;
+
+                // Player buildings (left side)
+                const playerBuildingDefs = [
+                    { gx: 2, gy: 2 }, { gx: 7, gy: 2 },
+                    { gx: 2, gy: 14 }, { gx: 7, gy: 14 },
+                ];
+
+                // AI buildings (right side)
+                const aiBuildingDefs = [
+                    { gx: 31, gy: 2 }, { gx: 35, gy: 2 },
+                    { gx: 31, gy: 14 }, { gx: 35, gy: 14 },
+                ];
+
+                for (const def of playerBuildingDefs) {
+                    buildings.push(new Building(bid++, def.gx, def.gy, BUILDING_SIZE, BUILDING_SIZE, 'player'));
+                }
+                for (const def of aiBuildingDefs) {
+                    buildings.push(new Building(bid++, def.gx, def.gy, BUILDING_SIZE, BUILDING_SIZE, 'ai'));
+                }
+
+                // Mark buildings on grid
+                for (const b of buildings) {
+                    markBuildingOnGrid(b, true);
+                }
+            }
+
+            function createUnits() {
+                units = [];
+                let uid = 0;
+
+                // Player units near their buildings
+                const playerSpawnPoints = [
+                    { x: 5 * GRID_SIZE + GRID_SIZE / 2, y: 6 * GRID_SIZE + GRID_SIZE / 2 },
+                    { x: 9 * GRID_SIZE + GRID_SIZE / 2, y: 6 * GRID_SIZE + GRID_SIZE / 2 },
+                    { x: 5 * GRID_SIZE + GRID_SIZE / 2, y: 9 * GRID_SIZE + GRID_SIZE / 2 },
+                    { x: 9 * GRID_SIZE + GRID_SIZE / 2, y: 9 * GRID_SIZE + GRID_SIZE / 2 },
+                    { x: 5 * GRID_SIZE + GRID_SIZE / 2, y: 18 * GRID_SIZE + GRID_SIZE / 2 },
+                    { x: 9 * GRID_SIZE + GRID_SIZE / 2, y: 18 * GRID_SIZE + GRID_SIZE / 2 },
+                    { x: 5 * GRID_SIZE + GRID_SIZE / 2, y: 21 * GRID_SIZE + GRID_SIZE / 2 },
+                    { x: 9 * GRID_SIZE + GRID_SIZE / 2, y: 21 * GRID_SIZE + GRID_SIZE / 2 },
+                ];
+
+                const aiSpawnPoints = [
+                    { x: 33 * GRID_SIZE + GRID_SIZE / 2, y: 6 * GRID_SIZE + GRID_SIZE / 2 },
+                    { x: 37 * GRID_SIZE + GRID_SIZE / 2, y: 6 * GRID_SIZE + GRID_SIZE / 2 },
+                    { x: 33 * GRID_SIZE + GRID_SIZE / 2, y: 9 * GRID_SIZE + GRID_SIZE / 2 },
+                    { x: 37 * GRID_SIZE + GRID_SIZE / 2, y: 9 * GRID_SIZE + GRID_SIZE / 2 },
+                    { x: 33 * GRID_SIZE + GRID_SIZE / 2, y: 18 * GRID_SIZE + GRID_SIZE / 2 },
+                    { x: 37 * GRID_SIZE + GRID_SIZE / 2, y: 18 * GRID_SIZE + GRID_SIZE / 2 },
+                    { x: 33 * GRID_SIZE + GRID_SIZE / 2, y: 21 * GRID_SIZE + GRID_SIZE / 2 },
+                    { x: 37 * GRID_SIZE + GRID_SIZE / 2, y: 21 * GRID_SIZE + GRID_SIZE / 2 },
+                ];
+
+                for (const sp of playerSpawnPoints) {
+                    units.push(new Unit(uid++, sp.x, sp.y, 'player'));
+                }
+                for (const sp of aiSpawnPoints) {
+                    units.push(new Unit(uid++, sp.x, sp.y, 'ai'));
+                }
+            }
+
+            function resetGame() {
+                initGrid();
+                buildings = [];
+                units = [];
+                particles = [];
+                selectedUnits = [];
+                gameOver = false;
+                gameResult = '';
+                gameTime = 0;
+                aiTimer = 3 + Math.random() * 3;
+                aiWaveSize = 2;
+                isDragging = false;
+                hasDragged = false;
+                createBuildings();
+                createUnits();
+                updateUI();
+            }
+
+            // ──────────────────────────────────────
+            // COMBAT SYSTEM
+            // ──────────────────────────────────────
+            function handleCombat(dt) {
+                const aliveUnits = units.filter(u => u.alive);
+                const aliveBuildings = buildings.filter(b => b.alive);
+
+                for (const unit of aliveUnits) {
+                    if (unit.attackTimer > 0) continue;
+
+                    // Find nearest enemy unit in range
+                    let nearestEnemy = null;
+                    let nearestDist = UNIT_ATTACK_RANGE * GRID_SIZE;
+
+                    for (const other of aliveUnits) {
+                        if (other.owner === unit.owner || !other.alive) continue;
+                        const dist = unit.distanceTo(other);
+                        if (dist < nearestDist) {
+                            nearestDist = dist;
+                            nearestEnemy = other;
+                        }
+                    }
+
+                    // Find nearest enemy building in range
+                    let nearestBuilding = null;
+                    let nearestBuildDist = UNIT_ATTACK_RANGE * GRID_SIZE;
+
+                    for (const build of aliveBuildings) {
+                        if (build.owner === unit.owner || !build.alive) continue;
+                        const dist = unit.distanceToBuilding(build);
+                        if (dist < nearestBuildDist) {
+                            nearestBuildDist = dist;
+                            nearestBuilding = build;
+                        }
+                    }
+
+                    // Prioritize units over buildings if both are in range
+                    const targetUnit = nearestEnemy;
+                    const targetBuilding = (nearestEnemy ? null : nearestBuilding);
+
+                    if (targetUnit) {
+                        // Attack enemy unit
+                        unit.attackTimer = unit.attackCooldown;
+                        const killed = targetUnit.takeDamage(unit.damage);
+                        spawnAttackParticles(
+                            (unit.x + targetUnit.x) / 2,
+                            (unit.y + targetUnit.y) / 2,
+                            unit.owner
+                        );
+                        if (killed && targetUnit.selected) {
+                            const idx = selectedUnits.indexOf(targetUnit);
+                            if (idx >= 0) selectedUnits.splice(idx, 1);
+                        }
+                    } else if (targetBuilding) {
+                        // Attack enemy building
+                        unit.attackTimer = unit.attackCooldown;
+                        const destroyed = targetBuilding.takeDamage(BUILDING_DAMAGE);
+                        spawnAttackParticles(
+                            (unit.x + targetBuilding.centerPixelX) / 2,
+                            (unit.y + targetBuilding.centerPixelY) / 2,
+                            unit.owner
+                        );
+                        if (destroyed) {
+                            // Clear any units targeting this building
+                            for (const u of aliveUnits) {
+                                if (u.targetBuilding === targetBuilding) {
+                                    u.targetBuilding = null;
+                                    u.path = [];
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ──────────────────────────────────────
+            // AI SYSTEM
+            // ──────────────────────────────────────
+            function updateAI(dt) {
+                if (gameOver) return;
+
+                aiTimer -= dt;
+                if (aiTimer <= 0) {
+                    aiTimer = 3.5 + Math.random() * 5;
+                    launchAIWave();
+                }
+
+                // Reassign idle AI units
+                const idleAIUnits = units.filter(u => u.alive && u.owner === 'ai' && u.path.length === 0 && !u
+                    .targetBuilding);
+                const playerBuildingsAlive = buildings.filter(b => b.alive && b.owner === 'player');
+
+                if (idleAIUnits.length > 0 && playerBuildingsAlive.length > 0) {
+                    // Send some idle units to attack
+                    for (const unit of idleAIUnits.slice(0, Math.min(2, idleAIUnits.length))) {
+                        const targetBuild = playerBuildingsAlive[Math.floor(Math.random() * playerBuildingsAlive
+                            .length)];
+                        unit.setTargetBuilding(targetBuild);
+                    }
+                    // Rest patrol near AI buildings
+                    const aiBuildings = buildings.filter(b => b.alive && b.owner === 'ai');
+                    for (const unit of idleAIUnits.slice(2, 5)) {
+                        if (aiBuildings.length > 0) {
+                            const defendBuild = aiBuildings[Math.floor(Math.random() * aiBuildings.length)];
+                            const cell = findAdjacentWalkable(defendBuild, unit.gridCol, unit.gridRow);
+                            if (cell) {
+                                const path = astar(unit.gridCol, unit.gridRow, cell.col, cell.row, grid);
+                                if (path) unit.setPath(path);
+                            }
+                        }
+                    }
+                }
+            }
+
+            function launchAIWave() {
+                if (gameOver) return;
+                const playerBuildingsAlive = buildings.filter(b => b.alive && b.owner === 'player');
+                if (playerBuildingsAlive.length === 0) return;
+
+                const availableUnits = units.filter(u => u.alive && u.owner === 'ai' && u.path.length === 0);
+                const waveUnits = availableUnits.slice(0, aiWaveSize);
+
+                if (waveUnits.length > 0) {
+                    const targetBuild = playerBuildingsAlive[Math.floor(Math.random() * playerBuildingsAlive.length)];
+                    for (const unit of waveUnits) {
+                        unit.setTargetBuilding(targetBuild);
+                    }
+                }
+
+                // Increase wave size over time
+                aiWaveSize = Math.min(6, aiWaveSize + 0.3);
+            }
+
+            // ──────────────────────────────────────
+            // SELECTION & INPUT
+            // ──────────────────────────────────────
+            function getCanvasMousePos(e) {
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = CANVAS_WIDTH / rect.width;
+                const scaleY = CANVAS_HEIGHT / rect.height;
+                return {
+                    x: (e.clientX - rect.left) * scaleX,
+                    y: (e.clientY - rect.top) * scaleY
+                };
+            }
+
+            function selectUnitsInRect(x1, y1, x2, y2) {
+                const left = Math.min(x1, x2);
+                const right = Math.max(x1, x2);
+                const top = Math.min(y1, y2);
+                const bottom = Math.max(y1, y2);
+
+                selectedUnits = [];
+                for (const unit of units) {
+                    if (unit.alive && unit.owner === 'player') {
+                        if (unit.x >= left && unit.x <= right && unit.y >= top && unit.y <= bottom) {
+                            unit.selected = true;
+                            selectedUnits.push(unit);
+                        } else {
+                            unit.selected = false;
+                        }
+                    }
+                }
+            }
+
+            function clearSelection() {
+                for (const unit of selectedUnits) {
+                    unit.selected = false;
+                }
+                selectedUnits = [];
+            }
+
+            function moveSelectedUnits(targetCol, targetRow, isAttackMove) {
+                if (selectedUnits.length === 0) return;
+
+                // Check if clicking on an enemy building
+                let clickedBuilding = null;
+                for (const b of buildings) {
+                    if (b.alive && b.containsGrid(targetCol, targetRow)) {
+                        clickedBuilding = b;
+                        break;
+                    }
+                }
+
+                // Check if clicking on an enemy unit
+                let clickedEnemyUnit = null;
+                if (!clickedBuilding) {
+                    for (const u of units) {
+                        if (u.alive && u.owner !== 'player') {
+                            const uCol = u.gridCol;
+                            const uRow = u.gridRow;
+                            if (uCol === targetCol && uRow === targetRow) {
+                                clickedEnemyUnit = u;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (clickedBuilding && clickedBuilding.owner === 'ai') {
+                    // Attack enemy building
+                    for (const unit of selectedUnits) {
+                        unit.setTargetBuilding(clickedBuilding);
+                    }
+                } else if (clickedEnemyUnit && isAttackMove) {
+                    // Move to attack enemy unit
+                    for (const unit of selectedUnits) {
+                        const path = astar(unit.gridCol, unit.gridRow, targetCol, targetRow, grid);
+                        unit.setPath(path);
+                    }
+                } else if (clickedBuilding && clickedBuilding.owner === 'player') {
+                    // Move near friendly building (defend)
+                    for (const unit of selectedUnits) {
+                        const cell = findAdjacentWalkable(clickedBuilding, targetCol, targetRow);
+                        if (cell) {
+                            const path = astar(unit.gridCol, unit.gridRow, cell.col, cell.row, grid);
+                            unit.setPath(path);
+                        }
+                    }
+                } else {
+                    // Move to open ground
+                    if (!isWalkable(targetCol, targetRow)) {
+                        // Find nearest walkable cell
+                        let bestCell = null;
+                        let bestDist = Infinity;
+                        for (let dr = -3; dr <= 3; dr++) {
+                            for (let dc = -3; dc <= 3; dc++) {
+                                const c = targetCol + dc;
+                                const r = targetRow + dr;
+                                if (isWalkable(c, r)) {
+                                    const dist = Math.abs(dc) + Math.abs(dr);
+                                    if (dist < bestDist) {
+                                        bestDist = dist;
+                                        bestCell = { col: c, row: r };
+                                    }
+                                }
+                            }
+                        }
+                        if (bestCell) {
+                            targetCol = bestCell.col;
+                            targetRow = bestCell.row;
+                        } else {
+                            return; // Nowhere to go
+                        }
+                    }
+
+                    // Spread units slightly for larger groups
+                    const offsets = getFormationOffsets(selectedUnits.length);
+                    for (let i = 0; i < selectedUnits.length; i++) {
+                        const unit = selectedUnits[i];
+                        const offset = offsets[i] || { dc: 0, dr: 0 };
+                        const destCol = Math.max(0, Math.min(COLS - 1, targetCol + offset.dc));
+                        const destRow = Math.max(0, Math.min(ROWS - 1, targetRow + offset.dr));
+                        const finalCol = isWalkable(destCol, destRow) ? destCol : targetCol;
+                        const finalRow = isWalkable(destCol, destRow) ? destRow : targetRow;
+                        const path = astar(unit.gridCol, unit.gridRow, finalCol, finalRow, grid);
+                        unit.setPath(path);
+                    }
+                }
+            }
+
+            function getFormationOffsets(count) {
+                if (count <= 1) return [{ dc: 0, dr: 0 }];
+                const offsets = [];
+                const radius = Math.ceil(Math.sqrt(count));
+                let idx = 0;
+                for (let dr = -radius; dr <= radius && offsets.length < count; dr++) {
+                    for (let dc = -radius; dc <= radius && offsets.length < count; dc++) {
+                        if (Math.abs(dr) <= radius && Math.abs(dc) <= radius) {
+                            offsets.push({ dc, dr });
+                        }
+                    }
+                }
+                // Sort by distance from center
+                offsets.sort((a, b) => (Math.abs(a.dc) + Math.abs(a.dr)) - (Math.abs(b.dc) + Math.abs(b.dr)));
+                return offsets;
+            }
+
+            canvas.addEventListener('mousedown', (e) => {
+                if (gameOver) return;
+                const pos = getCanvasMousePos(e);
+                dragStartX = pos.x;
+                dragStartY = pos.y;
+                dragCurrentX = pos.x;
+                dragCurrentY = pos.y;
+                isDragging = true;
+                hasDragged = false;
+            });
+
+            canvas.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                const pos = getCanvasMousePos(e);
+                dragCurrentX = pos.x;
+                dragCurrentY = pos.y;
+                const dist = Math.sqrt(
+                    (dragCurrentX - dragStartX) ** 2 + (dragCurrentY - dragStartY) ** 2
+                );
+                if (dist > DRAG_THRESHOLD) {
+                    hasDragged = true;
+                }
+            });
+
+            canvas.addEventListener('mouseup', (e) => {
+                if (!isDragging) return;
+                isDragging = false;
+
+                if (hasDragged) {
+                    // Finish selection drag
+                    selectUnitsInRect(dragStartX, dragStartY, dragCurrentX, dragCurrentY);
+                } else {
+                    // It was a click
+                    const pos = getCanvasMousePos(e);
+                    const cell = getGridCell(pos.x, pos.y);
+
+                    if (selectedUnits.length > 0) {
+                        // Move selected units
+                        moveSelectedUnits(cell.col, cell.row, false);
+                    } else {
+                        // Try to select a single player unit
+                        let clickedUnit = null;
+                        let closestDist = GRID_SIZE * 1.5;
+                        for (const unit of units) {
+                            if (unit.alive && unit.owner === 'player') {
+                                const dist = Math.sqrt((unit.x - pos.x) ** 2 + (unit.y - pos.y) ** 2);
+                                if (dist < closestDist) {
+                                    closestDist = dist;
+                                    clickedUnit = unit;
+                                }
+                            }
+                        }
+                        if (clickedUnit) {
+                            clearSelection();
+                            clickedUnit.selected = true;
+                            selectedUnits = [clickedUnit];
+                        } else {
+                            clearSelection();
+                        }
+                    }
+                }
+                dragCurrentX = dragStartX;
+                dragCurrentY = dragStartY;
+                hasDragged = false;
+                updateUI();
+            });
+
+            canvas.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                if (gameOver) return;
+                const pos = getCanvasMousePos(e);
+                const cell = getGridCell(pos.x, pos.y);
+                if (selectedUnits.length > 0) {
+                    moveSelectedUnits(cell.col, cell.row, true);
+                }
+                updateUI();
+            });
+
+            // Touch support
+            canvas.addEventListener('touchstart', (e) => {
+                if (gameOver) return;
+                if (e.touches.length === 1) {
+                    const touch = e.touches[0];
+                    const pos = getCanvasMousePos(touch);
+                    dragStartX = pos.x;
+                    dragStartY = pos.y;
+                    dragCurrentX = pos.x;
+                    dragCurrentY = pos.y;
+                    isDragging = true;
+                    hasDragged = false;
+                }
+                e.preventDefault();
+            }, { passive: false });
+
+            canvas.addEventListener('touchmove', (e) => {
+                if (!isDragging) return;
+                if (e.touches.length === 1) {
+                    const touch = e.touches[0];
+                    const pos = getCanvasMousePos(touch);
+                    dragCurrentX = pos.x;
+                    dragCurrentY = pos.y;
+                    const dist = Math.sqrt(
+                        (dragCurrentX - dragStartX) ** 2 + (dragCurrentY - dragStartY) ** 2
+                    );
+                    if (dist > DRAG_THRESHOLD) hasDragged = true;
+                }
+                e.preventDefault();
+            }, { passive: false });
+
+            canvas.addEventListener('touchend', (e) => {
+                if (!isDragging) return;
+                isDragging = false;
+                if (hasDragged) {
+                    selectUnitsInRect(dragStartX, dragStartY, dragCurrentX, dragCurrentY);
+                } else {
+                    const pos = { x: dragStartX, y: dragStartY };
+                    const cell = getGridCell(pos.x, pos.y);
+                    if (selectedUnits.length > 0) {
+                        moveSelectedUnits(cell.col, cell.row, false);
+                    } else {
+                        let clickedUnit = null;
+                        let closestDist = GRID_SIZE * 1.5;
+                        for (const unit of units) {
+                            if (unit.alive && unit.owner === 'player') {
+                                const dist = Math.sqrt((unit.x - pos.x) ** 2 + (unit.y - pos.y) ** 2);
+                                if (dist < closestDist) {
+                                    closestDist = dist;
+                                    clickedUnit = unit;
+                                }
+                            }
+                        }
+                        if (clickedUnit) {
+                            clearSelection();
+                            clickedUnit.selected = true;
+                            selectedUnits = [clickedUnit];
+                        } else {
+                            clearSelection();
+                        }
+                    }
+                }
+                dragCurrentX = dragStartX;
+                dragCurrentY = dragStartY;
+                hasDragged = false;
+                updateUI();
+                e.preventDefault();
+            }, { passive: false });
+
+            // ──────────────────────────────────────
+            // UI UPDATE
+            // ──────────────────────────────────────
+            function updateUI() {
+                const playerBuildingsAlive = buildings.filter(b => b.alive && b.owner === 'player').length;
+                const aiBuildingsAlive = buildings.filter(b => b.alive && b.owner === 'ai').length;
+                const playerUnitsAlive = units.filter(u => u.alive && u.owner === 'player').length;
+                const aiUnitsAlive = units.filter(u => u.alive && u.owner === 'ai').length;
+
+                document.getElementById('playerBuildings').textContent =
+                    `${playerBuildingsAlive} 🏠 | ${playerUnitsAlive} ⚔️`;
+                document.getElementById('enemyBuildings').textContent =
+                    `${aiBuildingsAlive} 🏠 | ${aiUnitsAlive} ⚔️`;
+
+                const statusText = document.getElementById('statusText');
+                if (gameOver) {
+                    statusText.textContent = gameResult;
+                } else if (selectedUnits.length > 0) {
+                    statusText.textContent = `🎯 ${selectedUnits.length} unit(s) selected`;
+                } else {
+                    statusText.textContent = '⚡ Select units';
+                }
+            }
+
+            // ──────────────────────────────────────
+            // RENDERING
+            // ──────────────────────────────────────
+            function drawGrid() {
+                // Background grass
+                ctx.fillStyle = '#4a7c3f';
+                ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+                // Draw subtle grid lines
+                ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+                ctx.lineWidth = 0.5;
+                for (let c = 0; c <= COLS; c++) {
+                    ctx.beginPath();
+                    ctx.moveTo(c * GRID_SIZE, 0);
+                    ctx.lineTo(c * GRID_SIZE, CANVAS_HEIGHT);
+                    ctx.stroke();
+                }
+                for (let r = 0; r <= ROWS; r++) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, r * GRID_SIZE);
+                    ctx.lineTo(CANVAS_WIDTH, r * GRID_SIZE);
+                    ctx.stroke();
+                }
+
+                // Draw decorative grass tufts
+                const seed = 42;
+                for (let i = 0; i < 60; i++) {
+                    const pseudoRand = ((i * 2654435761 + seed) & 0xFFFFFFFF) >>> 0;
+                    const cx = (pseudoRand % COLS) * GRID_SIZE + (pseudoRand % 17);
+                    const ry = ((pseudoRand * 7) % ROWS) * GRID_SIZE + ((pseudoRand * 3) % 17);
+                    if (grid[Math.floor(ry / GRID_SIZE)] && grid[Math.floor(ry / GRID_SIZE)][Math.floor(cx / GRID_SIZE)] ===
+                        0) {
+                        ctx.fillStyle = 'rgba(90,160,70,0.4)';
+                        ctx.fillRect(cx, ry, 3, 3);
+                    }
+                }
+            }
+
+            function drawBuilding(building) {
+                const x = building.gridX * GRID_SIZE;
+                const y = building.gridY * GRID_SIZE;
+                const w = building.width * GRID_SIZE;
+                const h = building.height * GRID_SIZE;
+
+                // Shadow
+                ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                ctx.fillRect(x + 3, y + 3, w, h);
+
+                // Main building color
+                const baseColor = building.owner === 'player' ? '#3366cc' : '#cc3333';
+                const damagedColor = building.owner === 'player' ? '#1a3a6e' : '#6e1a1a';
+                const hpRatio = building.hp / building.maxHp;
+                const color = lerpColor(damagedColor, baseColor, hpRatio);
+
+                ctx.fillStyle = color;
+                ctx.fillRect(x, y, w, h);
+
+                // Border
+                ctx.strokeStyle = building.owner === 'player' ? '#5599ee' : '#ee5555';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(x, y, w, h);
+
+                // Roof accent
+                ctx.fillStyle = building.owner === 'player' ? 'rgba(100,160,255,0.5)' : 'rgba(255,100,100,0.5)';
+                ctx.fillRect(x + 4, y + 4, w - 8, h / 3);
+
+                // Windows
+                const winColor = building.owner === 'player' ? '#aaccff' : '#ffcccc';
+                for (let wr = 0; wr < building.height - 1; wr++) {
+                    for (let wc = 0; wc < building.width; wc++) {
+                        const wx = x + wc * GRID_SIZE + GRID_SIZE * 0.3;
+                        const wy = y + (wr + 1) * GRID_SIZE - GRID_SIZE * 0.55;
+                        ctx.fillStyle = winColor;
+                        ctx.fillRect(wx, wy, GRID_SIZE * 0.4, GRID_SIZE * 0.35);
+                        ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+                        ctx.lineWidth = 1;
+                        ctx.strokeRect(wx, wy, GRID_SIZE * 0.4, GRID_SIZE * 0.35);
+                    }
+                }
+
+                // Health bar
+                if (hpRatio < 1) {
+                    const barWidth = w - 6;
+                    const barHeight = 5;
+                    const barX = x + 3;
+                    const barY = y - 10;
+                    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                    ctx.fillRect(barX - 1, barY - 1, barWidth + 2, barHeight + 2);
+                    ctx.fillStyle = hpRatio > 0.5 ? '#4caf50' : hpRatio > 0.25 ? '#ff9800' : '#f44336';
+                    ctx.fillRect(barX, barY, barWidth * hpRatio, barHeight);
+                }
+
+                // Flame indicator if heavily damaged
+                if (hpRatio < 0.4 && hpRatio > 0) {
+                    const flameX = x + w / 2;
+                    const flameY = y - 5;
+                    const flicker = Math.sin(gameTime * 15 + building.id) * 3;
+                    ctx.fillStyle = 'rgba(255,140,0,0.7)';
+                    ctx.beginPath();
+                    ctx.arc(flameX + flicker, flameY, 4 + Math.random() * 3, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = 'rgba(255,255,0,0.5)';
+                    ctx.beginPath();
+                    ctx.arc(flameX + flicker * 0.5, flameY - 1, 2 + Math.random() * 2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            function drawUnit(unit) {
+                if (!unit.alive) return;
+                const size = UNIT_SIZE;
+                const half = size / 2;
+                const x = unit.x - half;
+                const y = unit.y - half;
+
+                // Selection glow
+                if (unit.selected) {
+                    const pulse = 1 + Math.sin(gameTime * 6) * 0.25;
+                    ctx.fillStyle = 'rgba(255,255,100,0.5)';
+                    ctx.fillRect(x - 5 * pulse, y - 5 * pulse, size + 10 * pulse, size + 10 * pulse);
+                    ctx.strokeStyle = '#ffeb3b';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([4, 2]);
+                    ctx.strokeRect(x - 5 * pulse, y - 5 * pulse, size + 10 * pulse, size + 10 * pulse);
+                    ctx.setLineDash([]);
+                }
+
+                // Shadow
+                ctx.fillStyle = 'rgba(0,0,0,0.35)';
+                ctx.fillRect(x + 2, y + 2, size, size);
+
+                // Body
+                const bodyColor = unit.owner === 'player' ? '#5599ff' : '#ff5555';
+                const flashColor = '#ffffff';
+                const currentColor = unit.attackFlash > 0 ? flashColor : bodyColor;
+                ctx.fillStyle = currentColor;
+                ctx.fillRect(x, y, size, size);
+
+                // Border
+                ctx.strokeStyle = unit.owner === 'player' ? '#3377dd' : '#dd3333';
+                ctx.lineWidth = 1.5;
+                ctx.strokeRect(x, y, size, size);
+
+                // Eyes / face detail
+                const eyeSize = 3;
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(x + size * 0.25, y + size * 0.25, eyeSize, eyeSize);
+                ctx.fillRect(x + size * 0.55, y + size * 0.25, eyeSize, eyeSize);
+                ctx.fillStyle = '#111';
+                ctx.fillRect(x + size * 0.3, y + size * 0.3, 2, 2);
+                ctx.fillRect(x + size * 0.6, y + size * 0.3, 2, 2);
+
+                // Health bar (small)
+                if (unit.hp < unit.maxHp) {
+                    const hpRatio = unit.hp / unit.maxHp;
+                    const barWidth = size;
+                    const barHeight = 3;
+                    const barX = x;
+                    const barY = y - 6;
+                    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                    ctx.fillRect(barX, barY, barWidth, barHeight);
+                    ctx.fillStyle = hpRatio > 0.5 ? '#4caf50' : hpRatio > 0.25 ? '#ff9800' : '#f44336';
+                    ctx.fillRect(barX, barY, barWidth * hpRatio, barHeight);
+                }
+
+                // Draw path indicator for selected units
+                if (unit.selected && unit.path.length > 0 && unit.pathIndex < unit.path.length) {
+                    ctx.strokeStyle = 'rgba(255,255,200,0.5)';
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([3, 4]);
+                    ctx.beginPath();
+                    const startPx = gridToPixelCenter(unit.gridCol, unit.gridRow);
+                    ctx.moveTo(startPx.x, startPx.y);
+                    for (let i = unit.pathIndex; i < unit.path.length; i++) {
+                        const node = unit.path[i];
+                        const p = gridToPixelCenter(node.x, node.y);
+                        ctx.lineTo(p.x, p.y);
+                    }
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+
+                    // Destination marker
+                    if (unit.path.length > 0) {
+                        const lastNode = unit.path[unit.path.length - 1];
+                        const dp = gridToPixelCenter(lastNode.x, lastNode.y);
+                        ctx.strokeStyle = 'rgba(255,255,150,0.8)';
+                        ctx.lineWidth = 2;
+                        ctx.setLineDash([2, 2]);
+                        const markerSize = 6;
+                        ctx.strokeRect(dp.x - markerSize, dp.y - markerSize, markerSize * 2, markerSize * 2);
+                        ctx.setLineDash([]);
+                    }
+                }
+            }
+
+            function drawSelectionBox() {
+                if (!isDragging || !hasDragged) return;
+                const x = Math.min(dragStartX, dragCurrentX);
+                const y = Math.min(dragStartY, dragCurrentY);
+                const w = Math.abs(dragCurrentX - dragStartX);
+                const h = Math.abs(dragCurrentY - dragStartY);
+
+                ctx.fillStyle = 'rgba(100,200,255,0.15)';
+                ctx.fillRect(x, y, w, h);
+                ctx.strokeStyle = 'rgba(150,220,255,0.8)';
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([6, 3]);
+                ctx.strokeRect(x, y, w, h);
+                ctx.setLineDash([]);
+            }
+
+            function drawGameOverOverlay() {
+                if (!gameOver) return;
+                ctx.fillStyle = 'rgba(0,0,0,0.65)';
+                ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+                const isWin = gameResult.includes('Victory');
+                ctx.fillStyle = isWin ? '#ffd700' : '#ff4444';
+                ctx.font = 'bold 48px "Segoe UI", sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(isWin ? '🏆 VICTORY! 🏆' : '💀 DEFEAT! 💀', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 10);
+
+                ctx.fillStyle = '#fff';
+                ctx.font = '18px "Segoe UI", sans-serif';
+                ctx.fillText('Click "Restart" to play again', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 40);
+                ctx.textAlign = 'start';
+            }
+
+            function drawMinimap() {
+                const mmWidth = 100;
+                const mmHeight = 75;
+                const mmX = CANVAS_WIDTH - mmWidth - 8;
+                const mmY = 8;
+                const scaleX = mmWidth / COLS;
+                const scaleY = mmHeight / ROWS;
+
+                ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                ctx.fillRect(mmX - 1, mmY - 1, mmWidth + 2, mmHeight + 2);
+                ctx.fillStyle = 'rgba(30,30,30,0.85)';
+                ctx.fillRect(mmX, mmY, mmWidth, mmHeight);
+
+                // Buildings on minimap
+                for (const b of buildings) {
+                    if (!b.alive) continue;
+                    ctx.fillStyle = b.owner === 'player' ? '#4488ee' : '#ee4444';
+                    ctx.fillRect(
+                        mmX + b.gridX * scaleX,
+                        mmY + b.gridY * scaleY,
+                        b.width * scaleX,
+                        b.height * scaleY
+                    );
+                }
+
+                // Units on minimap
+                for (const u of units) {
+                    if (!u.alive) continue;
+                    ctx.fillStyle = u.owner === 'player' ? '#88bbff' : '#ff8888';
+                    ctx.fillRect(mmX + u.gridCol * scaleX, mmY + u.gridRow * scaleY, 2, 2);
+                }
+
+                // Border
+                ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(mmX, mmY, mmWidth, mmHeight);
+            }
+
+            function render() {
+                ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                drawGrid();
+
+                // Draw buildings
+                for (const building of buildings) {
+                    if (building.alive) drawBuilding(building);
+                }
+
+                // Draw units
+                for (const unit of units) {
+                    drawUnit(unit);
+                }
+
+                // Draw particles
+                for (const particle of particles) {
+                    particle.draw(ctx);
+                }
+
+                // Draw selection box
+                drawSelectionBox();
+
+                // Draw minimap
+                drawMinimap();
+
+                // Draw game over overlay
+                drawGameOverOverlay();
+
+                // Draw info text
+                ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                ctx.fillRect(4, CANVAS_HEIGHT - 26, 180, 22);
+                ctx.fillStyle = '#fff';
+                ctx.font = '11px "Segoe UI", sans-serif';
+                ctx.textAlign = 'left';
+                const timeStr = `⏱ ${Math.floor(gameTime)}s | Wave: ${Math.floor(aiWaveSize)}`;
+                ctx.fillText(timeStr, 10, CANVAS_HEIGHT - 10);
+
+                // Selection count
+                if (selectedUnits.length > 0) {
+                    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                    ctx.fillRect(CANVAS_WIDTH / 2 - 60, CANVAS_HEIGHT - 26, 120, 22);
+                    ctx.fillStyle = '#ffeb3b';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(`🎯 ${selectedUnits.length} selected`, CANVAS_WIDTH / 2, CANVAS_HEIGHT - 10);
+                }
+                ctx.textAlign = 'start';
+            }
+
+            function lerpColor(c1, c2, t) {
+                const r1 = parseInt(c1.slice(1, 3), 16);
+                const g1 = parseInt(c1.slice(3, 5), 16);
+                const b1 = parseInt(c1.slice(5, 7), 16);
+                const r2 = parseInt(c2.slice(1, 3), 16);
+                const g2 = parseInt(c2.slice(3, 5), 16);
+                const b2 = parseInt(c2.slice(5, 7), 16);
+                const r = Math.round(r1 + (r2 - r1) * t);
+                const g = Math.round(g1 + (g2 - g1) * t);
+                const b = Math.round(b1 + (b2 - b1) * t);
+                return `rgb(${r},${g},${b})`;
+            }
+
+            // ──────────────────────────────────────
+            // GAME LOOP
+            // ──────────────────────────────────────
+            let lastTime = performance.now();
+
+            function gameLoop(timestamp) {
+                let dt = (timestamp - lastTime) / 1000;
+                lastTime = timestamp;
+
+                // Clamp delta time to prevent huge jumps
+                if (dt > 0.2) dt = 0.2;
+                if (dt <= 0) dt = 0.016;
+
+                if (!gameOver) {
+                    gameTime += dt;
+
+                    // Update units
+                    for (const unit of units) {
+                        unit.update(dt);
+                    }
+
+                    // Handle combat
+                    handleCombat(dt);
+
+                    // Update AI
+                    updateAI(dt);
+
+                    // Update particles
+                    for (const particle of particles) {
+                        particle.update(dt);
+                    }
+                    particles = particles.filter(p => p.alive);
+
+                    // Clean up dead units from selection
+                    selectedUnits = selectedUnits.filter(u => u.alive);
+
+                    // Check win/lose conditions
+                    const playerBuildingsAlive = buildings.filter(b => b.alive && b.owner === 'player');
+                    const aiBuildingsAlive = buildings.filter(b => b.alive && b.owner === 'ai');
+                    const playerUnitsAlive = units.filter(u => u.alive && u.owner === 'player');
+                    const aiUnitsAlive = units.filter(u => u.alive && u.owner === 'ai');
+
+                    if (aiBuildingsAlive.length === 0 && aiUnitsAlive.length === 0) {
+                        gameOver = true;
+                        gameResult = '🏆 Total Victory! Enemy eliminated!';
+                        clearSelection();
+                    } else if (aiBuildingsAlive.length === 0) {
+                        gameOver = true;
+                        gameResult = '🏆 Victory! All enemy buildings destroyed!';
+                        clearSelection();
+                    } else if (playerBuildingsAlive.length === 0) {
+                        gameOver = true;
+                        gameResult = '💀 Defeat! All your buildings were destroyed!';
+                        clearSelection();
+                    } else if (playerUnitsAlive.length === 0 && aiUnitsAlive.length > 0) {
+                        gameOver = true;
+                        gameResult = '💀 Defeat! All your units have fallen!';
+                        clearSelection();
+                    }
+
+                    updateUI();
+                }
+
+                render();
+                requestAnimationFrame(gameLoop);
+            }
+
+            // ──────────────────────────────────────
+            // PUBLIC API
+            // ──────────────────────────────────────
+            window.game = {
+                reset: function() {
+                    resetGame();
+                    lastTime = performance.now();
+                }
+            };
+
+            // ──────────────────────────────────────
+            // START GAME
+            // ──────────────────────────────────────
+            resetGame();
+            lastTime = performance.now();
+            requestAnimationFrame(gameLoop);
+
+            console.log('🏰 2D Town Defender Ready!');
+            console.log('  🖱️ Drag to select units');
+            console.log('  🖱️ Click to move selected units');
+            console.log('  🖱️ Right-click to attack-move');
+            console.log('  ⚔️ Protect your buildings (blue)');
+            console.log('  🔥 Destroy enemy buildings (red)');
+            console.log('  🗺️ A* pathfinding enabled');
+        })();
+    </script>
+</body>
+</html>
