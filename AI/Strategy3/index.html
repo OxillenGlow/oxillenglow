@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2D Town Defender - Smarter AI & Balanced</title>
+    <style>
+        :root {
+            --bg: #1a1a2e;
+            --surface: #16213e;
+            --text: #e0e0e0;
+            --accent: #4da6ff;
+            --danger: #ff4d4d;
+            --gold: #ffc107;
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            background: var(--bg);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            overflow-y: auto;
+            padding: 10px;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .game-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            max-width: 850px;
+            width: 100%;
+        }
+        .game-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .town-stats { display:flex; gap:20px; align-items:center; flex-wrap:wrap; }
+        .stat-card {
+            background: var(--surface);
+            border-radius: 12px;
+            padding: 10px 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border: 2px solid transparent;
+            min-width: 130px;
+        }
+        .stat-card.player { border-color:#4488ee; }
+        .stat-card.enemy { border-color:#ee4444; }
+        .stat-icon {
+            width:32px; height:32px; border-radius:6px;
+            display:flex; align-items:center; justify-content:center;
+            font-size:18px; font-weight:bold; color:#fff;
+        }
+        .stat-card.player .stat-icon { background:#4488ee; }
+        .stat-card.enemy .stat-icon { background:#ee4444; }
+        .stat-info { display:flex; flex-direction:column; gap:2px; }
+        .stat-label { font-size:10px; text-transform:uppercase; letter-spacing:1px; color:#aaa; }
+        .stat-value { font-size:15px; font-weight:700; color:#fff; }
+        .game-controls { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+        .btn {
+            padding:8px 16px; border-radius:8px; border:none; cursor:pointer;
+            font-weight:600; font-size:13px; letter-spacing:0.5px; transition:all 0.2s;
+            font-family:inherit; text-transform:uppercase;
+        }
+        .btn-reset { background:#e74c3c; color:#fff; }
+        .btn-reset:hover { background:#c0392b; transform:translateY(-1px); box-shadow:0 4px 12px rgba(231,76,60,0.4); }
+        .btn-info {
+            background: var(--surface); color:var(--text); border:1px solid #555;
+            cursor:default; font-size:11px; pointer-events:none; max-width:180px;
+            white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+        }
+        canvas {
+            border-radius:12px; cursor:crosshair;
+            box-shadow:0 8px 32px rgba(0,0,0,0.6);
+            display:block; width:100%; height:auto;
+            border:2px solid #333; background:#2d5a27;
+        }
+        .instructions { color:#999; font-size:12px; text-align:center; letter-spacing:0.5px; line-height:1.6; }
+        .instructions span { color:#ffc107; font-weight:600; }
+    </style>
+</head>
+<body>
+<div class="game-wrapper">
+    <div class="game-header">
+        <div class="town-stats">
+            <div class="stat-card player">
+                <div class="stat-icon">🏰</div>
+                <div class="stat-info">
+                    <span class="stat-label">Your Town</span>
+                    <span class="stat-value" id="playerBuildings">8 🏠 | 16 ⚔️</span>
+                </div>
+            </div>
+            <div class="stat-card enemy">
+                <div class="stat-icon">🔥</div>
+                <div class="stat-info">
+                    <span class="stat-label">Enemy Town</span>
+                    <span class="stat-value" id="enemyBuildings">8 🏠 | 20 ⚔️</span>
+                </div>
+            </div>
+        </div>
+        <div class="game-controls">
+            <span class="btn btn-info" id="statusText">⚡ Select units</span>
+            <button class="btn btn-reset" onclick="game.reset()">🔄 Restart</button>
+        </div>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+    <div class="instructions">
+        <span>🖱️ Drag</span> to select &nbsp;|&nbsp;
+        <span>🖱️ Click</span> to move &nbsp;|&nbsp;
+        <span>🖱️ Right-click</span> to attack-move &nbsp;|&nbsp;
+        <span>⚔️</span> Guns auto-fire!
+    </div>
+</div>
+
+<script>
+    (function() {
+        // ──────────────────────────────────────
+        // CONSTANTS
+        // ──────────────────────────────────────
+        const GRID_SIZE = 20;
+        const COLS = 80;
+        const ROWS = 60;
+        const CANVAS_WIDTH = COLS * GRID_SIZE;
+        const CANVAS_HEIGHT = ROWS * GRID_SIZE;
+        const BUILDING_SIZE = 3;
+        const UNIT_SIZE = 16;
+        const UNIT_SPEED = 110;
+        const UNIT_HP = 70;
+        const GUN_RANGE = 6 * GRID_SIZE;
+        const GUN_DAMAGE = 13;
+        const GUN_COOLDOWN = 0.55;
+        const BUILDING_HP = 220;
+        const BUILDING_DAMAGE_RESIST = 0.7;
+        const MAX_HEIGHT = 8;
+        const TREE_PROBABILITY = 0.28; // reduced density
+        const AI_DAMAGE_MULT = 1.15; // AI hits harder
+        const AI_HP_MULT = 1.15; // AI has more health
+
+        // ──────────────────────────────────────
+        // CANVAS SETUP
+        // ──────────────────────────────────────
+        const canvas = document.getElementById('gameCanvas');
+        canvas.width = CANVAS_WIDTH;
+        canvas.height = CANVAS_HEIGHT;
+        const ctx = canvas.getContext('2d');
+
+        // ──────────────────────────────────────
+        // GAME STATE
+        // ──────────────────────────────────────
+        let grid = [];
+        let heightMap = [];
+        let treeGrid = [];
+        let buildings = [];
+        let units = [];
+        let projectiles = [];
+        let particles = [];
+        let selectedUnits = [];
+        let gameOver = false;
+        let gameResult = '';
+        let gameTime = 0;
+        let aiTimer = 2.2;
+        let aiWaveSize = 4;
+        let lastAiReassign = 0;
+
+        let isDragging = false, dragStartX=0, dragStartY=0, dragCurrentX=0, dragCurrentY=0, hasDragged=false;
+        const DRAG_THRESHOLD = 5;
+
+        // ──────────────────────────────────────
+        // GRID & TERRAIN
+        // ──────────────────────────────────────
+        function initGrid() {
+            grid = [];
+            heightMap = [];
+            treeGrid = [];
+            const middleCol = COLS/2;
+            for(let row=0; row<ROWS; row++) {
+                grid[row] = new Array(COLS).fill(0);
+                heightMap[row] = new Array(COLS).fill(0);
+                treeGrid[row] = new Array(COLS).fill(false);
+                for(let col=0; col<COLS; col++) {
+                    const dist = Math.abs(col - middleCol);
+                    const h = Math.round(MAX_HEIGHT * (1 - dist/middleCol));
+                    heightMap[row][col] = Math.max(0, Math.min(MAX_HEIGHT, h));
+                }
+            }
+            // Trees in middle columns (35%-65%)
+            const treeStart = Math.floor(COLS*0.35);
+            const treeEnd = Math.floor(COLS*0.65);
+            for(let row=0; row<ROWS; row++) {
+                for(let col=treeStart; col<=treeEnd; col++) {
+                    if(row>1 && row<ROWS-2 && col>1 && col<COLS-2) {
+                        if(Math.random() < TREE_PROBABILITY) {
+                            treeGrid[row][col] = true;
+                            grid[row][col] = 1;
+                        }
+                    }
+                }
+            }
+            // Block top and bottom flanking paths with solid tree lines
+            for(let col=treeStart; col<=treeEnd; col++) {
+                for(let row=0; row<=3; row++) {
+                    if(row<ROWS) { treeGrid[row][col] = true; grid[row][col] = 1; }
+                }
+                for(let row=ROWS-4; row<ROWS; row++) {
+                    if(row>=0) { treeGrid[row][col] = true; grid[row][col] = 1; }
+                }
+            }
+            // Few scattered trees elsewhere
+            for(let i=0; i<150; i++) {
+                const col = Math.floor(Math.random()*COLS);
+                const row = Math.floor(Math.random()*ROWS);
+                if(col>5 && col<COLS-5 && row>2 && row<ROWS-2 && Math.random()<0.1 && !treeGrid[row][col]) {
+                    treeGrid[row][col] = true;
+                    grid[row][col] = 1;
+                }
+            }
+        }
+
+        function markBuildingOnGrid(b, blocked) {
+            for(let r=b.gridY; r<b.gridY+b.height; r++)
+                for(let c=b.gridX; c<b.gridX+b.width; c++)
+                    if(r>=0 && r<ROWS && c>=0 && c<COLS) grid[r][c] = blocked?1:0;
+        }
+
+        function isWalkable(c, r) {
+            return r>=0 && r<ROWS && c>=0 && c<COLS && grid[r][c]===0;
+        }
+
+        function getGridCell(px, py) {
+            return { col:Math.max(0,Math.min(COLS-1,Math.floor(px/GRID_SIZE))),
+                     row:Math.max(0,Math.min(ROWS-1,Math.floor(py/GRID_SIZE))) };
+        }
+
+        function gridToPixelCenter(col, row) {
+            return { x:col*GRID_SIZE+GRID_SIZE/2, y:row*GRID_SIZE+GRID_SIZE/2 };
+        }
+
+        // ──────────────────────────────────────
+        // A* PATHFINDING (8-directional)
+        // ──────────────────────────────────────
+        function astar(sc, sr, gc, gr, gridRef) {
+            if(gridRef[sr][sc]!==0 || gridRef[gr][gc]!==0) return null;
+            if(sc===gc && sr===gr) return [{x:gc,y:gr}];
+            const openSet = new Map(), closedSet = new Set();
+            const gScore = new Map(), parent = new Map();
+            const key = (c,r) => r*COLS+c;
+            const startKey = key(sc,sr), goalKey = key(gc,gr);
+            gScore.set(startKey, 0);
+            openSet.set(startKey, {col:sc, row:sr, f:heuristic(sc,sr,gc,gr)});
+            const dirs = [{dc:0,dr:-1,cost:1},{dc:1,dr:-1,cost:1.414},{dc:1,dr:0,cost:1},
+                          {dc:1,dr:1,cost:1.414},{dc:0,dr:1,cost:1},{dc:-1,dr:1,cost:1.414},
+                          {dc:-1,dr:0,cost:1},{dc:-1,dr:-1,cost:1.414}];
+            let iter=0;
+            while(openSet.size>0 && iter<COLS*ROWS*2) {
+                iter++;
+                let bestKey=null, bestF=Infinity;
+                for(const [k,node] of openSet) if(node.f<bestF) { bestF=node.f; bestKey=k; }
+                const cur = openSet.get(bestKey);
+                openSet.delete(bestKey);
+                if(cur.col===gc && cur.row===gr) {
+                    const path = []; let k = bestKey;
+                    while(k!==startKey) {
+                        const p = parent.get(k);
+                        path.unshift({x:p.col, y:p.row});
+                        k = key(p.col, p.row);
+                    }
+                    path.push({x:gc,y:gr});
+                    if(path.length>0 && path[0].x===sc && path[0].y===sr) path.shift();
+                    return path;
+                }
+                closedSet.add(bestKey);
+                const gCurr = gScore.get(bestKey)||0;
+                for(const dir of dirs) {
+                    const nc=cur.col+dir.dc, nr=cur.row+dir.dr;
+                    const nKey = key(nc,nr);
+                    if(closedSet.has(nKey)) continue;
+                    if(nr<0||nr>=ROWS||nc<0||nc>=COLS) continue;
+                    if(gridRef[nr][nc]!==0) continue;
+                    if(dir.dc!==0 && dir.dr!==0) {
+                        if(gridRef[cur.row][nc]!==0 || gridRef[nr][cur.col]!==0) continue;
+                    }
+                    const tentG = gCurr+dir.cost;
+                    const existG = gScore.get(nKey);
+                    if(existG===undefined || tentG<existG) {
+                        gScore.set(nKey, tentG);
+                        const f = tentG+heuristic(nc,nr,gc,gr);
+                        openSet.set(nKey, {col:nc, row:nr, f});
+                        parent.set(nKey, {col:cur.col, row:cur.row});
+                    }
+                }
+            }
+            return null;
+        }
+
+        function heuristic(c1,r1,c2,r2) {
+            const dc=Math.abs(c1-c2), dr=Math.abs(r1-r2);
+            return Math.max(dc,dr)+(Math.SQRT2-1)*Math.min(dc,dr);
+        }
+
+        function findAdjacentWalkable(building, preferCol, preferRow) {
+            const candidates = [];
+            const bx=building.gridX, by=building.gridY, bw=building.width, bh=building.height;
+            for(let c=bx-1; c<=bx+bw; c++) {
+                if(isWalkable(c,by-1)) candidates.push({col:c, row:by-1});
+                if(isWalkable(c,by+bh)) candidates.push({col:c, row:by+bh});
+            }
+            for(let r=by; r<by+bh; r++) {
+                if(isWalkable(bx-1,r)) candidates.push({col:bx-1, row:r});
+                if(isWalkable(bx+bw,r)) candidates.push({col:bx+bw, row:r});
+            }
+            if(candidates.length===0) {
+                for(let dr=-4; dr<=4; dr++)
+                    for(let dc=-4; dc<=4; dc++)
+                        if(isWalkable(bx+dc,by+dr)) candidates.push({col:bx+dc, row:by+dr});
+            }
+            if(candidates.length===0) return null;
+            candidates.sort((a,b)=>{
+                const da=Math.abs(a.col-preferCol)+Math.abs(a.row-preferRow);
+                const db=Math.abs(b.col-preferCol)+Math.abs(b.row-preferRow);
+                return da-db;
+            });
+            return candidates[0];
+        }
+
+        // ──────────────────────────────────────
+        // CLASSES
+        // ──────────────────────────────────────
+        class Building {
+            constructor(id, gx, gy, w, h, owner) {
+                this.id=id; this.gridX=gx; this.gridY=gy; this.width=w; this.height=h;
+                this.owner=owner; this.hp=BUILDING_HP; this.maxHp=BUILDING_HP; this.alive=true;
+            }
+            get centerPixelX() { return (this.gridX+this.width/2)*GRID_SIZE; }
+            get centerPixelY() { return (this.gridY+this.height/2)*GRID_SIZE; }
+            containsGrid(c,r) { return c>=this.gridX && c<this.gridX+this.width && r>=this.gridY && r<this.gridY+this.height; }
+            takeDamage(amount) {
+                this.hp -= amount*BUILDING_DAMAGE_RESIST;
+                if(this.hp<=0) { this.hp=0; this.alive=false; markBuildingOnGrid(this,false); spawnDestructionParticles(this.centerPixelX, this.centerPixelY, this.owner); return true; }
+                return false;
+            }
+        }
+
+        class Unit {
+            constructor(id, px, py, owner) {
+                this.id=id; this.x=px; this.y=py; this.owner=owner;
+                this.hp = owner==='ai' ? UNIT_HP*AI_HP_MULT : UNIT_HP;
+                this.maxHp = this.hp;
+                this.speed=UNIT_SPEED; this.path=[]; this.pathIndex=0; this.targetBuilding=null;
+                this.alive=true; this.selected=false; this.attackFlash=0;
+                this.gunCooldown=0; this.facingAngle = owner==='player'?0:Math.PI;
+                this.role = owner==='ai' ? (Math.random()<0.5?'attacker':'defender') : null;
+                this.damageMul = owner==='ai' ? AI_DAMAGE_MULT : 1.0;
+            }
+            get gridCol() { return Math.floor(this.x/GRID_SIZE); }
+            get gridRow() { return Math.floor(this.y/GRID_SIZE); }
+            get height() { return heightMap[this.gridRow]?.[this.gridCol]||0; }
+            setPath(p) { this.path=p||[]; this.pathIndex=0; this.targetBuilding=null; }
+            setTargetBuilding(b) {
+                this.targetBuilding=b;
+                const cell = findAdjacentWalkable(b, this.gridCol, this.gridRow);
+                if(cell) { const path=astar(this.gridCol, this.gridRow, cell.col, cell.row, grid); this.path=path||[]; this.pathIndex=0; }
+                else this.path=[];
+            }
+            update(dt) {
+                if(!this.alive) return;
+                if(this.gunCooldown>0) this.gunCooldown-=dt;
+                if(this.attackFlash>0) this.attackFlash-=dt;
+                if(this.path.length>0 && this.pathIndex<this.path.length) {
+                    const node = this.path[this.pathIndex];
+                    const target = gridToPixelCenter(node.x, node.y);
+                    const dx=target.x-this.x, dy=target.y-this.y, dist=Math.sqrt(dx*dx+dy*dy);
+                    if(dist<3) { this.pathIndex++; if(this.pathIndex>=this.path.length) { this.path=[]; this.pathIndex=0; } }
+                    else {
+                        const move = this.speed*dt, ratio = Math.min(move/dist,1);
+                        this.x += dx*ratio; this.y += dy*ratio;
+                        this.facingAngle = Math.atan2(dy,dx);
+                    }
+                }
+                this.x = Math.max(UNIT_SIZE/2, Math.min(CANVAS_WIDTH-UNIT_SIZE/2, this.x));
+                this.y = Math.max(UNIT_SIZE/2, Math.min(CANVAS_HEIGHT-UNIT_SIZE/2, this.y));
+            }
+            takeDamage(amount) {
+                this.hp -= amount;
+                this.attackFlash=0.12;
+                if(this.hp<=0) { this.hp=0; this.alive=false; this.selected=false; spawnDeathParticles(this.x,this.y,this.owner); return true; }
+                return false;
+            }
+            distanceTo(other) { return Math.hypot(this.x-other.x, this.y-other.y); }
+            distanceToBuilding(b) {
+                const bx=b.gridX*GRID_SIZE, by=b.gridY*GRID_SIZE, bw=b.width*GRID_SIZE, bh=b.height*GRID_SIZE;
+                const cx = Math.max(bx, Math.min(this.x, bx+bw));
+                const cy = Math.max(by, Math.min(this.y, by+bh));
+                return Math.hypot(this.x-cx, this.y-cy);
+            }
+        }
+
+        class Projectile {
+            constructor(sx, sy, tUnit, tBuilding, shooter) {
+                this.x=sx; this.y=sy; this.shooter=shooter;
+                this.targetUnit=tUnit; this.targetBuilding=tBuilding;
+                this.speed=400; this.alive=true; this.damage=GUN_DAMAGE * shooter.damageMul;
+                let aimX, aimY;
+                if(tUnit) { aimX=tUnit.x; aimY=tUnit.y; }
+                else if(tBuilding) { aimX=tBuilding.centerPixelX; aimY=tBuilding.centerPixelY; }
+                else { this.alive=false; return; }
+                const dx=aimX-sx, dy=aimY-sy, dist=Math.sqrt(dx*dx+dy*dy);
+                if(dist<1) { this.alive=false; return; }
+                this.vx=(dx/dist)*this.speed; this.vy=(dy/dist)*this.speed;
+                this.trail=[];
+            }
+            update(dt) {
+                if(!this.alive) return;
+                this.x+=this.vx*dt; this.y+=this.vy*dt;
+                this.trail.push({x:this.x, y:this.y, life:0.12});
+                const gc=Math.floor(this.x/GRID_SIZE), gr=Math.floor(this.y/GRID_SIZE);
+                if(gr<0||gr>=ROWS||gc<0||gc>=COLS) { this.alive=false; return; }
+                if(treeGrid[gr]?.[gc]) { this.alive=false; return; }
+                const bHit = buildings.find(b=>b.alive && b!==this.shooter.targetBuilding && b.containsGrid(gc,gr));
+                if(bHit) { bHit.takeDamage(this.damage); spawnAttackParticles(this.x,this.y,this.shooter.owner); this.alive=false; return; }
+                if(this.targetUnit && this.targetUnit.alive && Math.hypot(this.x-this.targetUnit.x, this.y-this.targetUnit.y)<UNIT_SIZE*0.8) {
+                    this.applyDamage(this.targetUnit); this.alive=false; return;
+                }
+                if(this.targetBuilding && this.targetBuilding.alive && Math.hypot(this.x-this.targetBuilding.centerPixelX, this.y-this.targetBuilding.centerPixelY)<GRID_SIZE*2) {
+                    this.targetBuilding.takeDamage(this.damage); spawnAttackParticles(this.x,this.y,this.shooter.owner); this.alive=false; return;
+                }
+                if(this.x<0||this.x>CANVAS_WIDTH||this.y<0||this.y>CANVAS_HEIGHT) this.alive=false;
+            }
+            applyDamage(unit) {
+                const dist = this.shooter.distanceTo(unit);
+                const distFactor = Math.max(0.3, 1 - dist/GUN_RANGE);
+                const heightAdv = 1 + Math.max(0, (this.shooter.height - unit.height)*0.15);
+                unit.takeDamage(this.damage * distFactor * heightAdv);
+                spawnAttackParticles(this.x, this.y, this.shooter.owner);
+            }
+        }
+
+        class Particle {
+            constructor(x,y,color,life,vx,vy,size) {
+                this.x=x; this.y=y; this.color=color; this.life=life; this.maxLife=life;
+                this.vx=vx||0; this.vy=vy||0; this.size=size||3; this.alive=true;
+            }
+            update(dt) { this.life-=dt; if(this.life<=0) this.alive=false; this.x+=this.vx*dt; this.y+=this.vy*dt; this.vy+=50*dt; }
+            draw(ctx) {
+                const alpha=Math.max(0, this.life/this.maxLife);
+                ctx.fillStyle = this.color.replace('1)',`${alpha})`).replace('rgb','rgba');
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.size*alpha, 0, Math.PI*2); ctx.fill();
+            }
+        }
+
+        function spawnDestructionParticles(x,y,owner) {
+            const col = owner==='player'?'rgb(255,180,50)':'rgb(255,80,50)';
+            for(let i=0;i<30;i++) {
+                const a=Math.random()*Math.PI*2, s=40+Math.random()*200;
+                particles.push(new Particle(x,y,col,0.5+Math.random()*0.7, Math.cos(a)*s, Math.sin(a)*s-70, 2+Math.random()*6));
+            }
+        }
+        function spawnDeathParticles(x,y,owner) {
+            const col = owner==='player'?'rgb(100,180,255)':'rgb(255,100,100)';
+            for(let i=0;i<12;i++) {
+                const a=Math.random()*Math.PI*2, s=20+Math.random()*90;
+                particles.push(new Particle(x,y,col,0.25+Math.random()*0.4, Math.cos(a)*s, Math.sin(a)*s-40, 1.5+Math.random()*4));
+            }
+        }
+        function spawnAttackParticles(x,y,owner) {
+            const col = owner==='player'?'rgb(200,220,255)':'rgb(255,200,180)';
+            for(let i=0;i<5;i++) {
+                const a=Math.random()*Math.PI*2, s=15+Math.random()*60;
+                particles.push(new Particle(x,y,col,0.1+Math.random()*0.25, Math.cos(a)*s, Math.sin(a)*s, 1+Math.random()*3));
+            }
+        }
+
+        // ──────────────────────────────────────
+        // GAME INIT
+        // ──────────────────────────────────────
+        function createBuildings() {
+            buildings = [];
+            let bid=0;
+            // Player buildings centred vertically: gridY = 10,20,30,40 (approx)
+            const playerY = [10,20,30,40];
+            for(const y of playerY) {
+                buildings.push(new Building(bid++, 3, y, BUILDING_SIZE, BUILDING_SIZE, 'player'));
+                buildings.push(new Building(bid++, 10, y, BUILDING_SIZE, BUILDING_SIZE, 'player'));
+            }
+            const aiY = [10,20,30,40];
+            for(const y of aiY) {
+                buildings.push(new Building(bid++, 67, y, BUILDING_SIZE, BUILDING_SIZE, 'ai'));
+                buildings.push(new Building(bid++, 74, y, BUILDING_SIZE, BUILDING_SIZE, 'ai'));
+            }
+            for(const b of buildings) markBuildingOnGrid(b, true);
+        }
+
+        function createUnits() {
+            units = [];
+            let uid=0;
+            const playerSpawns = [];
+            for(let row=2; row<ROWS-2; row+=4)
+                for(let col=5; col<14; col+=3)
+                    if(isWalkable(col,row)) playerSpawns.push([col*GRID_SIZE+GRID_SIZE/2, row*GRID_SIZE+GRID_SIZE/2]);
+            const aiSpawns = [];
+            for(let row=2; row<ROWS-2; row+=4)
+                for(let col=66; col<78; col+=3)
+                    if(isWalkable(col,row)) aiSpawns.push([col*GRID_SIZE+GRID_SIZE/2, row*GRID_SIZE+GRID_SIZE/2]);
+            // Spawn 16 player units, 20 AI units
+            for(let i=0; i<16; i++) {
+                if(i<playerSpawns.length) units.push(new Unit(uid++, playerSpawns[i][0], playerSpawns[i][1], 'player'));
+            }
+            for(let i=0; i<20; i++) {
+                if(i<aiSpawns.length) units.push(new Unit(uid++, aiSpawns[i][0], aiSpawns[i][1], 'ai'));
+            }
+            // Fill missing if not enough spawn points
+            while(units.filter(u=>u.owner==='player').length<16) {
+                const b = buildings.find(b=>b.owner==='player'&&b.alive);
+                if(b) units.push(new Unit(uid++, b.centerPixelX+20, b.centerPixelY, 'player'));
+            }
+            while(units.filter(u=>u.owner==='ai').length<20) {
+                const b = buildings.find(b=>b.owner==='ai'&&b.alive);
+                if(b) units.push(new Unit(uid++, b.centerPixelX-20, b.centerPixelY, 'ai'));
+            }
+        }
+
+        function resetGame() {
+            initGrid();
+            buildings=[]; units=[]; projectiles=[]; particles=[]; selectedUnits=[];
+            gameOver=false; gameResult=''; gameTime=0; aiTimer=2.2; aiWaveSize=4; lastAiReassign=0;
+            isDragging=false; hasDragged=false;
+            createBuildings(); createUnits();
+            updateUI();
+        }
+
+        // ──────────────────────────────────────
+        // COMBAT & TARGETING
+        // ──────────────────────────────────────
+        function findNearestEnemy(unit) {
+            let bestDist = GUN_RANGE, bestTarget = null;
+            for(const other of units) {
+                if(!other.alive || other.owner===unit.owner) continue;
+                const d = unit.distanceTo(other);
+                if(d<bestDist) { bestDist=d; bestTarget=other; }
+            }
+            for(const b of buildings) {
+                if(!b.alive || b.owner===unit.owner) continue;
+                const d = unit.distanceToBuilding(b);
+                if(d<bestDist) { bestDist=d; bestTarget=b; }
+            }
+            return bestTarget;
+        }
+
+        function unitShoot(unit) {
+            if(!unit.alive || unit.gunCooldown>0) return;
+            const target = findNearestEnemy(unit);
+            if(!target) return;
+            unit.gunCooldown = GUN_COOLDOWN;
+            let tUnit=null, tB=null;
+            if(target instanceof Unit) tUnit=target; else tB=target;
+            const proj = new Projectile(unit.x, unit.y, tUnit, tB, unit);
+            if(proj.alive) projectiles.push(proj);
+            unit.facingAngle = Math.atan2(
+                (target instanceof Unit ? target.y : target.centerPixelY) - unit.y,
+                (target instanceof Unit ? target.x : target.centerPixelX) - unit.x
+            );
+        }
+
+        // ──────────────────────────────────────
+        // SMARTER AI
+        // ──────────────────────────────────────
+        function updateAI(dt) {
+            if(gameOver) return;
+            aiTimer -= dt;
+            if(aiTimer <= 0) {
+                aiTimer = 2.8 + Math.random()*3;
+                launchAIWave();
+            }
+            const aiUnits = units.filter(u=>u.alive && u.owner==='ai');
+            const playerBuildings = buildings.filter(b=>b.alive && b.owner==='player');
+            const aiBuildings = buildings.filter(b=>b.alive && b.owner==='ai');
+            const playerUnits = units.filter(u=>u.alive && u.owner==='player');
+
+            lastAiReassign += dt;
+            if(lastAiReassign > 2.5) {
+                lastAiReassign = 0;
+                const total = aiUnits.length;
+                const desiredDefenders = Math.ceil(total * 0.45); // 45% defenders
+                let defCount = aiUnits.filter(u=>u.role==='defender').length;
+                for(const u of aiUnits) {
+                    if(defCount < desiredDefenders && u.role !== 'defender') { u.role='defender'; defCount++; }
+                    else if(defCount > desiredDefenders && u.role === 'defender') { u.role='attacker'; defCount--; }
+                }
+            }
+
+            for(const unit of aiUnits) {
+                if(unit.path.length>0 || unit.targetBuilding) continue;
+                if(unit.role === 'defender') {
+                    // Actively defend: if a player unit is near a friendly building, move to intercept
+                    let closestEnemy = null, bestDist = 10*GRID_SIZE;
+                    for(const pu of playerUnits) {
+                        const d = unit.distanceTo(pu);
+                        if(d < bestDist && pu.alive) { bestDist=d; closestEnemy=pu; }
+                    }
+                    if(closestEnemy && bestDist < 8*GRID_SIZE) {
+                        const cell = getGridCell(closestEnemy.x, closestEnemy.y);
+                        const path = astar(unit.gridCol, unit.gridRow, cell.col, cell.row, grid);
+                        if(path) unit.setPath(path);
+                    } else if(aiBuildings.length>0) {
+                        const defend = aiBuildings[Math.floor(Math.random()*aiBuildings.length)];
+                        const cell = findAdjacentWalkable(defend, unit.gridCol, unit.gridRow);
+                        if(cell) {
+                            const path = astar(unit.gridCol, unit.gridRow, cell.col, cell.row, grid);
+                            if(path) unit.setPath(path);
+                        }
+                    }
+                } else { // attacker
+                    if(playerBuildings.length>0) {
+                        const target = playerBuildings[Math.floor(Math.random()*playerBuildings.length)];
+                        unit.setTargetBuilding(target);
+                    }
+                }
+            }
+        }
+
+        function launchAIWave() {
+            if(gameOver) return;
+            const attackers = units.filter(u=>u.alive && u.owner==='ai' && u.role==='attacker' && u.path.length===0);
+            const wave = attackers.slice(0, aiWaveSize);
+            const playerB = buildings.filter(b=>b.alive && b.owner==='player');
+            if(wave.length>0 && playerB.length>0) {
+                const target = playerB[Math.floor(Math.random()*playerB.length)];
+                for(const u of wave) u.setTargetBuilding(target);
+            }
+            aiWaveSize = Math.min(10, aiWaveSize + 0.5);
+        }
+
+        // ──────────────────────────────────────
+        // INPUT HANDLING
+        // ──────────────────────────────────────
+        function getCanvasMousePos(e) {
+            const rect = canvas.getBoundingClientRect();
+            return { x:(e.clientX-rect.left)*(CANVAS_WIDTH/rect.width),
+                     y:(e.clientY-rect.top)*(CANVAS_HEIGHT/rect.height) };
+        }
+
+        function selectUnitsInRect(x1,y1,x2,y2) {
+            const left=Math.min(x1,x2), right=Math.max(x1,x2), top=Math.min(y1,y2), bottom=Math.max(y1,y2);
+            selectedUnits = [];
+            for(const u of units) {
+                if(u.alive && u.owner==='player') {
+                    if(u.x>=left && u.x<=right && u.y>=top && u.y<=bottom) { u.selected=true; selectedUnits.push(u); }
+                    else u.selected=false;
+                }
+            }
+        }
+
+        function clearSelection() { for(const u of selectedUnits) u.selected=false; selectedUnits=[]; }
+
+        function moveSelectedUnits(tc, tr, isAttackMove) {
+            if(selectedUnits.length===0) return;
+            const clickedB = buildings.find(b=>b.alive && b.containsGrid(tc,tr));
+            const clickedEnemy = units.find(u=>u.alive && u.owner!=='player' && u.gridCol===tc && u.gridRow===tr);
+            if(clickedB && clickedB.owner==='ai') {
+                for(const u of selectedUnits) u.setTargetBuilding(clickedB);
+            } else if(clickedEnemy && isAttackMove) {
+                for(const u of selectedUnits) {
+                    const p = astar(u.gridCol, u.gridRow, tc, tr, grid);
+                    u.setPath(p);
+                }
+            } else if(clickedB && clickedB.owner==='player') {
+                for(const u of selectedUnits) {
+                    const cell = findAdjacentWalkable(clickedB, tc, tr);
+                    if(cell) { const p=astar(u.gridCol, u.gridRow, cell.col, cell.row, grid); u.setPath(p); }
+                }
+            } else {
+                if(!isWalkable(tc,tr)) {
+                    let best=null, bestD=Infinity;
+                    for(let dr=-3; dr<=3; dr++) for(let dc=-3; dc<=3; dc++) {
+                        const c=tc+dc, r=tr+dr;
+                        if(isWalkable(c,r)) { const d=Math.abs(dc)+Math.abs(dr); if(d<bestD){ bestD=d; best={col:c,row:r}; } }
+                    }
+                    if(best) { tc=best.col; tr=best.row; } else return;
+                }
+                const offsets = getFormationOffsets(selectedUnits.length);
+                for(let i=0; i<selectedUnits.length; i++) {
+                    const u=selectedUnits[i], off=offsets[i]||{dc:0,dr:0};
+                    const dc=Math.max(0,Math.min(COLS-1,tc+off.dc)), dr=Math.max(0,Math.min(ROWS-1,tr+off.dr));
+                    const fc=isWalkable(dc,dr)?dc:tc, fr=isWalkable(dc,dr)?dr:tr;
+                    const p=astar(u.gridCol, u.gridRow, fc, fr, grid);
+                    u.setPath(p);
+                }
+            }
+        }
+
+        function getFormationOffsets(count) {
+            const off=[]; const r=Math.ceil(Math.sqrt(count));
+            for(let dr=-r; dr<=r; dr++) for(let dc=-r; dc<=r; dc++) off.push({dc,dr});
+            off.sort((a,b)=>(Math.abs(a.dc)+Math.abs(a.dr))-(Math.abs(b.dc)+Math.abs(b.dr)));
+            return off.slice(0,count);
+        }
+
+        canvas.addEventListener('mousedown', e=>{
+            if(gameOver) return;
+            const p=getCanvasMousePos(e); dragStartX=p.x; dragStartY=p.y; dragCurrentX=p.x; dragCurrentY=p.y; isDragging=true; hasDragged=false;
+        });
+        canvas.addEventListener('mousemove', e=>{
+            if(!isDragging) return;
+            const p=getCanvasMousePos(e); dragCurrentX=p.x; dragCurrentY=p.y;
+            if(Math.hypot(dragCurrentX-dragStartX, dragCurrentY-dragStartY)>DRAG_THRESHOLD) hasDragged=true;
+        });
+        canvas.addEventListener('mouseup', e=>{
+            if(!isDragging) return;
+            isDragging=false;
+            if(hasDragged) selectUnitsInRect(dragStartX, dragStartY, dragCurrentX, dragCurrentY);
+            else {
+                const p=getCanvasMousePos(e), cell=getGridCell(p.x,p.y);
+                if(selectedUnits.length>0) moveSelectedUnits(cell.col, cell.row, false);
+                else {
+                    let closest=null, bestD=GRID_SIZE*1.8;
+                    for(const u of units) if(u.alive && u.owner==='player') {
+                        const d=Math.hypot(u.x-p.x, u.y-p.y); if(d<bestD){ bestD=d; closest=u; }
+                    }
+                    if(closest) { clearSelection(); closest.selected=true; selectedUnits=[closest]; }
+                    else clearSelection();
+                }
+            }
+            updateUI();
+        });
+        canvas.addEventListener('contextmenu', e=>{
+            e.preventDefault();
+            if(gameOver) return;
+            const p=getCanvasMousePos(e), cell=getGridCell(p.x,p.y);
+            if(selectedUnits.length>0) moveSelectedUnits(cell.col, cell.row, true);
+            updateUI();
+        });
+        // Touch support
+        canvas.addEventListener('touchstart', e=>{
+            if(gameOver) return;
+            if(e.touches.length===1) { const t=e.touches[0]; const p=getCanvasMousePos(t); dragStartX=p.x; dragStartY=p.y; dragCurrentX=p.x; dragCurrentY=p.y; isDragging=true; hasDragged=false; }
+            e.preventDefault();
+        }, {passive:false});
+        canvas.addEventListener('touchmove', e=>{
+            if(!isDragging) return;
+            if(e.touches.length===1) { const t=e.touches[0]; const p=getCanvasMousePos(t); dragCurrentX=p.x; dragCurrentY=p.y; if(Math.hypot(dragCurrentX-dragStartX, dragCurrentY-dragStartY)>DRAG_THRESHOLD) hasDragged=true; }
+            e.preventDefault();
+        }, {passive:false});
+        canvas.addEventListener('touchend', e=>{
+            if(!isDragging) return;
+            isDragging=false;
+            if(hasDragged) selectUnitsInRect(dragStartX, dragStartY, dragCurrentX, dragCurrentY);
+            else {
+                const p={x:dragStartX, y:dragStartY}, cell=getGridCell(p.x,p.y);
+                if(selectedUnits.length>0) moveSelectedUnits(cell.col, cell.row, false);
+                else {
+                    let closest=null, bestD=GRID_SIZE*1.8;
+                    for(const u of units) if(u.alive && u.owner==='player') {
+                        const d=Math.hypot(u.x-p.x, u.y-p.y); if(d<bestD){ bestD=d; closest=u; }
+                    }
+                    if(closest) { clearSelection(); closest.selected=true; selectedUnits=[closest]; }
+                    else clearSelection();
+                }
+            }
+            updateUI();
+            e.preventDefault();
+        }, {passive:false});
+
+        // ──────────────────────────────────────
+        // UI
+        // ──────────────────────────────────────
+        function updateUI() {
+            const pB=buildings.filter(b=>b.alive&&b.owner==='player').length;
+            const aB=buildings.filter(b=>b.alive&&b.owner==='ai').length;
+            const pU=units.filter(u=>u.alive&&u.owner==='player').length;
+            const aU=units.filter(u=>u.alive&&u.owner==='ai').length;
+            document.getElementById('playerBuildings').textContent = `${pB} 🏠 | ${pU} ⚔️`;
+            document.getElementById('enemyBuildings').textContent = `${aB} 🏠 | ${aU} ⚔️`;
+            const st = document.getElementById('statusText');
+            if(gameOver) st.textContent = gameResult;
+            else if(selectedUnits.length>0) st.textContent = `🎯 ${selectedUnits.length} selected`;
+            else st.textContent = '⚡ Select units';
+        }
+
+        // ──────────────────────────────────────
+        // RENDERING
+        // ──────────────────────────────────────
+        function drawGround() {
+            for(let r=0; r<ROWS; r++) for(let c=0; c<COLS; c++) {
+                const h=heightMap[r][c];
+                ctx.fillStyle = `hsl(90, 45%, ${35+h*7}%)`;
+                ctx.fillRect(c*GRID_SIZE, r*GRID_SIZE, GRID_SIZE, GRID_SIZE);
+            }
+            ctx.strokeStyle='rgba(0,0,0,0.06)'; ctx.lineWidth=0.5;
+            for(let c=0; c<=COLS; c++) { ctx.beginPath(); ctx.moveTo(c*GRID_SIZE,0); ctx.lineTo(c*GRID_SIZE,CANVAS_HEIGHT); ctx.stroke(); }
+            for(let r=0; r<=ROWS; r++) { ctx.beginPath(); ctx.moveTo(0,r*GRID_SIZE); ctx.lineTo(CANVAS_WIDTH,r*GRID_SIZE); ctx.stroke(); }
+        }
+
+        function drawTrees() {
+            for(let r=0; r<ROWS; r++) for(let c=0; c<COLS; c++) if(treeGrid[r][c]) {
+                const cx=c*GRID_SIZE+GRID_SIZE/2, cy=r*GRID_SIZE+GRID_SIZE/2;
+                ctx.fillStyle='#2d5a1e'; ctx.beginPath(); ctx.arc(cx,cy-4,8,0,Math.PI*2); ctx.fill();
+                ctx.fillStyle='#1e3e12'; ctx.beginPath(); ctx.arc(cx-3,cy-2,6,0,Math.PI*2); ctx.fill();
+                ctx.fillStyle='#4a3620'; ctx.fillRect(cx-2,cy-2,4,8);
+            }
+        }
+
+        function drawBuilding(b) {
+            const x=b.gridX*GRID_SIZE, y=b.gridY*GRID_SIZE, w=b.width*GRID_SIZE, h=b.height*GRID_SIZE;
+            ctx.fillStyle='rgba(0,0,0,0.3)'; ctx.fillRect(x+3,y+3,w,h);
+            const ratio=b.hp/b.maxHp;
+            const base=b.owner==='player'?'#3366cc':'#cc3333';
+            const damaged=b.owner==='player'?'#1a3a6e':'#6e1a1a';
+            ctx.fillStyle = lerpColor(damaged,base,ratio); ctx.fillRect(x,y,w,h);
+            ctx.strokeStyle=b.owner==='player'?'#5599ee':'#ee5555'; ctx.lineWidth=2; ctx.strokeRect(x,y,w,h);
+            if(ratio<1) { const bw=w-6; ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(x+3,y-10,bw+2,6); ctx.fillStyle=ratio>0.5?'#4caf50':ratio>0.25?'#ff9800':'#f44336'; ctx.fillRect(x+4,y-9,bw*ratio,4); }
+        }
+
+        function drawUnit(u) {
+            if(!u.alive) return;
+            const half=UNIT_SIZE/2, x=u.x-half, y=u.y-half;
+            if(u.selected) { const pulse=1+Math.sin(gameTime*6)*0.3; ctx.fillStyle='rgba(255,255,100,0.5)'; ctx.fillRect(x-6*pulse,y-6*pulse,UNIT_SIZE+12*pulse,UNIT_SIZE+12*pulse); }
+            ctx.fillStyle='rgba(0,0,0,0.3)'; ctx.fillRect(x+2,y+2,UNIT_SIZE,UNIT_SIZE);
+            const body=u.owner==='player'?'#5599ff':'#ff5555';
+            ctx.fillStyle=u.attackFlash>0?'#fff':body; ctx.fillRect(x,y,UNIT_SIZE,UNIT_SIZE);
+            ctx.strokeStyle=u.owner==='player'?'#3377dd':'#dd3333'; ctx.lineWidth=1.5; ctx.strokeRect(x,y,UNIT_SIZE,UNIT_SIZE);
+            const gunLen=9, gx=u.x+Math.cos(u.facingAngle)*half, gy=u.y+Math.sin(u.facingAngle)*half;
+            const tx=u.x+Math.cos(u.facingAngle)*(half+gunLen), ty=u.y+Math.sin(u.facingAngle)*(half+gunLen);
+            ctx.strokeStyle='#5c4033'; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(gx,gy); ctx.lineTo(tx,ty); ctx.stroke();
+            ctx.fillStyle='#3a2a1a'; ctx.beginPath(); ctx.arc(tx,ty,2.5,0,Math.PI*2); ctx.fill();
+        }
+
+        function drawProjectiles() {
+            for(const p of projectiles) {
+                ctx.fillStyle='#ffdd44'; ctx.beginPath(); ctx.arc(p.x,p.y,2.5,0,Math.PI*2); ctx.fill();
+                for(const t of p.trail) { ctx.fillStyle=`rgba(255,200,0,${t.life*2})`; ctx.beginPath(); ctx.arc(t.x,t.y,1.5,0,Math.PI*2); ctx.fill(); }
+            }
+        }
+
+        function drawSelectionBox() {
+            if(!isDragging||!hasDragged) return;
+            const x=Math.min(dragStartX,dragCurrentX), y=Math.min(dragStartY,dragCurrentY), w=Math.abs(dragCurrentX-dragStartX), h=Math.abs(dragCurrentY-dragStartY);
+            ctx.fillStyle='rgba(100,200,255,0.15)'; ctx.fillRect(x,y,w,h);
+            ctx.strokeStyle='rgba(150,220,255,0.8)'; ctx.lineWidth=1.5; ctx.setLineDash([6,3]); ctx.strokeRect(x,y,w,h); ctx.setLineDash([]);
+        }
+
+        function drawGameOver() {
+            if(!gameOver) return;
+            ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.fillRect(0,0,CANVAS_WIDTH,CANVAS_HEIGHT);
+            ctx.fillStyle=gameResult.includes('Victory')?'#ffd700':'#ff4444';
+            ctx.font='bold 52px "Segoe UI"'; ctx.textAlign='center';
+            ctx.fillText(gameResult.includes('Victory')?'🏆 VICTORY! 🏆':'💀 DEFEAT! 💀', CANVAS_WIDTH/2, CANVAS_HEIGHT/2-20);
+            ctx.fillStyle='#fff'; ctx.font='20px "Segoe UI"'; ctx.fillText('Click "Restart" to play again', CANVAS_WIDTH/2, CANVAS_HEIGHT/2+30);
+            ctx.textAlign='start';
+        }
+
+        function render() {
+            ctx.clearRect(0,0,CANVAS_WIDTH,CANVAS_HEIGHT);
+            drawGround(); drawTrees();
+            for(const b of buildings) if(b.alive) drawBuilding(b);
+            for(const u of units) drawUnit(u);
+            drawProjectiles();
+            for(const p of particles) p.draw(ctx);
+            drawSelectionBox(); drawGameOver();
+            ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(4,CANVAS_HEIGHT-28,200,24);
+            ctx.fillStyle='#fff'; ctx.font='12px "Segoe UI"'; ctx.textAlign='left';
+            ctx.fillText(`⏱ ${Math.floor(gameTime)}s | Wave: ${Math.floor(aiWaveSize)}`, 10, CANVAS_HEIGHT-10);
+        }
+
+        function lerpColor(c1,c2,t) {
+            const r1=parseInt(c1.slice(1,3),16), g1=parseInt(c1.slice(3,5),16), b1=parseInt(c1.slice(5,7),16);
+            const r2=parseInt(c2.slice(1,3),16), g2=parseInt(c2.slice(3,5),16), b2=parseInt(c2.slice(5,7),16);
+            return `rgb(${Math.round(r1+(r2-r1)*t)},${Math.round(g1+(g2-g1)*t)},${Math.round(b1+(b2-b1)*t)})`;
+        }
+
+        // ──────────────────────────────────────
+        // GAME LOOP
+        // ──────────────────────────────────────
+        let lastTime = performance.now();
+        function gameLoop(ts) {
+            let dt = (ts-lastTime)/1000; lastTime=ts;
+            if(dt>0.2) dt=0.2; if(dt<=0) dt=0.016;
+            if(!gameOver) {
+                gameTime+=dt;
+                for(const u of units) u.update(dt);
+                for(const u of units) if(u.alive && u.gunCooldown<=0) unitShoot(u);
+                for(const p of projectiles) p.update(dt);
+                projectiles = projectiles.filter(p=>p.alive);
+                for(const p of particles) p.update(dt);
+                particles = particles.filter(p=>p.alive);
+                updateAI(dt);
+                selectedUnits = selectedUnits.filter(u=>u.alive);
+                const pB=buildings.filter(b=>b.alive&&b.owner==='player');
+                const aB=buildings.filter(b=>b.alive&&b.owner==='ai');
+                const pU=units.filter(u=>u.alive&&u.owner==='player');
+                const aU=units.filter(u=>u.alive&&u.owner==='ai');
+                if(aB.length===0 && aU.length===0) { gameOver=true; gameResult='🏆 Total Victory!'; }
+                else if(aB.length===0) { gameOver=true; gameResult='🏆 Victory! Enemy buildings destroyed!'; }
+                else if(pB.length===0) { gameOver=true; gameResult='💀 Defeat! Your buildings destroyed!'; }
+                else if(pU.length===0 && aU.length>0) { gameOver=true; gameResult='💀 Defeat! All your units lost!'; }
+                updateUI();
+            }
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+
+        window.game = { reset: ()=>{ resetGame(); lastTime=performance.now(); } };
+        resetGame(); lastTime=performance.now(); requestAnimationFrame(gameLoop);
+    })();
+</script>
+</body>
+</html>
