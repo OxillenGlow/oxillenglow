@@ -1,3 +1,3 @@
-https://oxillenglow.github.io/oxillenglow/AI/Strategy5/
+https://oxillenglow.github.io/oxillenglow/AI/Strat/
 
 Vibe coding here
