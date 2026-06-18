@@ -6,6 +6,8 @@ I am just another random guy. I just use this github account mostly for coding (
 # My Projects:
 ### [MtSharpGrain](https://github.com/OxillenGlow/MtSharpGrain)
 
+![Last comit](https://img.shields.io/github/last-commit/OxillenGlow/Mtsharpgrain) _<-- constantly improving!_
+
 <img src="https://raw.githubusercontent.com/OxillenGlow/MtSharpGrain/main/Pictures/Sc.png" align="center"/>
 
 ```diff
