@@ -24,6 +24,6 @@ It is aimed at having two main modes:
 - a top down world simulation and npc control.
 - a simulation/rpg mode.
 
-This game has already implemented: **semi smooth** node meshes & **jVisualScripting engine & editor** for visual and block based coding
+This game has already implemented: **semi smooth** node meshes & **JavaScript** for coding plugins and modifiers.
 
 (i think and hope people would like coding in a game to modify game behavior, learn, and have fun.)
