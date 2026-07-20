@@ -4,7 +4,7 @@ I am just another random guy. I just use this github account mostly for coding (
 
 ---
 # My Projects:
-### [MtSharpGrain](https://github.com/OxillenGlow/MtSharpGrain)
+## [MtSharpGrain](https://github.com/OxillenGlow/MtSharpGrain)
 
 ![Last comit](https://img.shields.io/github/last-commit/OxillenGlow/Mtsharpgrain) _<-- constantly improving!_
 
@@ -19,11 +19,16 @@ I am just another random guy. I just use this github account mostly for coding (
 ```
 A sand box, non voxel game with slightly smooth interconnected blocks rather than traditional blocks. It is coded 100% in java
 
-It is aimed at having two main modes:
-
-- a top down world simulation and npc control.
-- a simulation/rpg mode.
+### Mod focused: 
+- **ANYONE** can make their own mod as modding is super easy if you have a basic understanding of JavaScript or just vibe coding with AI. 
+- **You** can make a mini game mod of whatever fun idea you once had!
 
 This game has already implemented: **semi smooth** node meshes & **JavaScript** for coding plugins and modifiers.
 
 (i think and hope people would like coding in a game to modify game behavior, learn, and have fun.)
+
+Now has (or still creating) three pre packaged modes:
+
+a top down world simulation and npc control.
+a simulation/rpg mode.
+normal survival.
