@@ -35,17 +35,6 @@
     font-family:var(--mono); font-size:22px; margin:0 0 18px 0; font-weight:600;
     color:var(--text);
   }
-  .os-tabs{
-    display:flex; gap:6px; margin-bottom:16px; background:var(--panel);
-    border:1px solid var(--border); border-radius:8px; padding:4px;
-  }
-  .os-tab{
-    font-family:var(--mono); font-size:12.5px; padding:7px 16px; border-radius:6px;
-    color:var(--dim); cursor:pointer; user-select:none; transition:.15s;
-    border:1px solid transparent;
-  }
-  .os-tab.active{ background:var(--accent-dim); color:var(--accent); border-color:var(--accent-dim);}
-  .os-tab:hover:not(.active){ color:var(--text); }
 
   .stage{
     position:relative; width:min(760px, 92vw); height:420px;
@@ -67,7 +56,7 @@
   .dot{width:9px;height:9px;border-radius:50%;background:#3a4a40;}
 
   /* ---- SCREEN 1: GitHub release page ---- */
-  .gh-body{ padding:18px 22px; font-family:var(--sans); }
+  .gh-body{ padding:18px 22px; font-family:var(--sans); background:#0d1015; }
   .gh-repo{ font-size:12px; color:var(--dim); margin-bottom:2px; }
   .gh-title{ font-size:17px; font-weight:600; margin-bottom:14px; }
   .gh-tag{
@@ -95,8 +84,8 @@
   .asset-row .name{ color:var(--accent); }
   .asset-row .name.dl{ text-decoration:underline; }
 
-  /* ---- SCREEN 2: downloads / finder-ish ---- */
-  .files{ padding:16px 20px; }
+  /* ---- SCREEN 2: downloads folder (macOS/Linux style) ---- */
+  .files{ padding:16px 20px; background:#11221a; }
   .path{ font-family:var(--mono); font-size:11px; color:var(--dim); margin-bottom:12px; }
   .grid{ display:flex; flex-wrap:wrap; gap:18px; }
   .fileitem{
@@ -107,8 +96,8 @@
   .fileitem.hot{ border-color:var(--accent-dim); background:rgba(227,179,65,.08); }
   .icon{ font-size:34px; line-height:1; }
 
-  /* ---- SCREEN 3: bin folder ---- */
-  .bin-list{ padding:10px 0; }
+  /* ---- SCREEN 3: extracted folder ---- */
+  .bin-list{ padding:10px 0; background:#11221a; }
   .bin-row{
     display:flex; align-items:center; gap:10px; padding:9px 18px; font-family:var(--mono);
     font-size:12.5px; border-bottom:1px solid var(--border);
@@ -116,6 +105,44 @@
   .bin-row .ico{ font-size:15px; }
   .bin-row.target{ background:rgba(227,179,65,.07); }
   .bin-row .name.hit{ color:var(--accent); }
+  .bin-row.windows-note {
+    background: rgba(255, 140, 0, 0.12);
+    border-left: 4px solid #ff8c00;
+    padding: 12px 14px;
+    margin: 6px 8px;
+    border-radius: 4px;
+    border-bottom: none;
+    font-size: 11px;
+    color: #ffb347;
+  }
+  .bin-row.mac-linux-note {
+    background: rgba(100, 200, 100, 0.12);
+    border-left: 4px solid #64c864;
+    padding: 12px 14px;
+    margin: 6px 8px;
+    border-radius: 4px;
+    border-bottom: none;
+    font-size: 11px;
+    color: #90ee90;
+  }
+  .bin-row .label-badge {
+    display: inline-block;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-left: 8px;
+  }
+  .bin-row.windows-note .label-badge {
+    background: #ff8c00;
+    color: #000;
+  }
+  .bin-row.mac-linux-note .label-badge {
+    background: #64c864;
+    color: #000;
+  }
 
   /* ---- SCREEN 4: launch ---- */
   .launch-wrap{
@@ -164,6 +191,38 @@
     100%{ transform:translate(-50%,-50%) scale(2.6); opacity:0; }
   }
 
+  /* ---- floating caption ---- */
+  .float-caption {
+    position: absolute;
+    background: rgba(0, 0, 0, 0.95);
+    border: 2px solid var(--accent);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 16px;
+    font-weight: 600;
+    padding: 14px 18px;
+    border-radius: 10px;
+    pointer-events: none;
+    z-index: 100;
+    white-space: nowrap;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8), 0 0 20px rgba(227, 179, 65, 0.3);
+    letter-spacing: 0.5px;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.9);
+  }
+  .float-caption::after {
+    content: '';
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background: rgba(0, 0, 0, 0.95);
+    border: 2px solid var(--accent);
+    border-right: none;
+    border-bottom: none;
+    left: -8px;
+    top: 50%;
+    transform: translateY(-50%) rotate(-45deg);
+  }
+
   /* ---- controls ---- */
   .controls{
     display:flex; align-items:center; gap:14px; margin-top:18px;
@@ -177,10 +236,6 @@
   .dots{ display:flex; gap:7px; }
   .stepdot{ width:7px; height:7px; border-radius:50%; background:var(--border); transition:.2s; }
   .stepdot.active{ background:var(--accent); width:20px; border-radius:4px; }
-  .caption{
-    font-family:var(--mono); font-size:12px; color:var(--dim); margin-top:14px; min-height:16px;
-    text-align:center; max-width:520px;
-  }
 </style>
 </head>
 <body>
@@ -188,15 +243,9 @@
   <div class="title">MtSharpGrain <b>·</b> setup guide</div>
   <h1>Installing from the .zip</h1>
 
-  <div class="os-tabs" id="osTabs">
-    <div class="os-tab active" data-os="mac">macOS</div>
-    <div class="os-tab" data-os="linux">Linux</div>
-    <div class="os-tab" data-os="win">Windows</div>
-  </div>
-
   <div class="stage" id="stage">
 
-    <!-- SCREEN 1 -->
+    <!-- SCREEN 1: GitHub Release -->
     <div class="screen on" id="s1">
       <div class="titlebar"><div class="dot"></div><div class="dot"></div><div class="dot"></div>github.com/OxillenGlow/MtSharpGrain/releases</div>
       <div class="gh-body">
@@ -204,20 +253,17 @@
         <div class="gh-title">Release v0.1.0-beta3</div>
         <div class="gh-tag">Latest</div>
         <div class="assets-box">
-          <div class="assets-head" id="assetsHead">▸<span class="chev">▸</span>&nbsp;Assets <span style="color:var(--dim); font-weight:400;">(4)</span></div>
+          <div class="assets-head" id="assetsHead">▸<span class="chev">▸</span>&nbsp;Assets <span style="color:var(--dim); font-weight:400;">(1)</span></div>
           <div class="assets-list" id="assetsList">
             <div class="asset-row"><span class="name" id="zipName">MtSharpGrain-0.1.0-beta3.zip</span><span style="color:var(--dim);">18.4 MB</span></div>
-            <div class="asset-row"><span style="color:var(--dim);">MtSharpGrain-aarch64.dmg</span><span style="color:var(--dim);">61 MB</span></div>
-            <div class="asset-row"><span style="color:var(--dim);">MtSharpGrain-x64.deb</span><span style="color:var(--dim);">58 MB</span></div>
-            <div class="asset-row"><span style="color:var(--dim);">MtSharpGrain-x64.exe</span><span style="color:var(--dim);">63 MB</span></div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- SCREEN 2 -->
+    <!-- SCREEN 2: Downloads Folder -->
     <div class="screen" id="s2">
-      <div class="titlebar"><div class="dot"></div><div class="dot"></div><div class="dot"></div>Downloads</div>
+      <div class="titlebar"><div class="dot"></div><div class="dot"></div><div class="dot"></div>Finder — Downloads</div>
       <div class="files">
         <div class="path">~ / Downloads</div>
         <div class="grid">
@@ -228,9 +274,9 @@
       </div>
     </div>
 
-    <!-- SCREEN 3 -->
+    <!-- SCREEN 3: Extracted Folder -->
     <div class="screen" id="s3">
-      <div class="titlebar"><div class="dot"></div><div class="dot"></div><div class="dot"></div>Downloads / MtSharpGrain-0.1.0-beta3</div>
+      <div class="titlebar"><div class="dot"></div><div class="dot"></div><div class="dot"></div>Finder — Downloads / MtSharpGrain-0.1.0-beta3</div>
       <div class="files">
         <div class="path">~ / Downloads / MtSharpGrain-0.1.0-beta3</div>
         <div class="grid">
@@ -240,17 +286,27 @@
       </div>
     </div>
 
-    <!-- SCREEN 4 -->
+    <!-- SCREEN 4: Bin Folder (Expanded) -->
     <div class="screen" id="s4">
-      <div class="titlebar"><div class="dot"></div><div class="dot"></div><div class="dot"></div>Downloads / MtSharpGrain-0.1.0-beta3 / bin</div>
+      <div class="titlebar"><div class="dot"></div><div class="dot"></div><div class="dot"></div>Finder — bin</div>
       <div class="bin-list">
+        <div class="bin-row windows-note">
+          🪟 Windows users <span class="label-badge">Run this</span>
+        </div>
+        <div class="bin-row target" id="batRow">
+          <span class="ico">🪟</span><span class="name hit" id="batName">MtSharpGrain.bat</span>
+        </div>
+
+        <div class="bin-row mac-linux-note">
+          🐧 macOS & Linux users <span class="label-badge">Run this</span>
+        </div>
         <div class="bin-row target" id="binRow">
-          <span class="ico">⚙️</span><span class="name hit" id="binName">MtSharpGrain</span>
+          <span class="ico">⚙️</span><span class="name hit" id="exeName">MtSharpGrain</span>
         </div>
       </div>
     </div>
 
-    <!-- SCREEN 5 -->
+    <!-- SCREEN 5: Launch -->
     <div class="screen" id="s5">
       <div class="launch-wrap">
         <div class="console" id="console">
@@ -269,6 +325,8 @@
       <svg viewBox="0 0 24 24" fill="none"><path d="M4 2 L4 19 L8.5 15.5 L11.5 21.5 L14 20.3 L11 14.3 L17 14 Z" fill="#e9eef0" stroke="#0b0f0d" stroke-width="1.2" stroke-linejoin="round"/></svg>
       <div class="ripple" id="ripple"></div>
     </div>
+
+    <div class="float-caption" id="floatCaption"></div>
   </div>
 
   <div class="controls">
@@ -278,21 +336,19 @@
     </div>
     <button class="btn" id="skipBtn">Skip to end</button>
   </div>
-  <div class="caption" id="caption">Open the release page and find the Assets list.</div>
 </div>
 
 <script>
-const OS = { mac: {file:'MtSharpGrain', icon:'⚙️', run:'./MtSharpGrain'},
-             linux: {file:'MtSharpGrain', icon:'⚙️', run:'./MtSharpGrain'},
-             win: {file:'MtSharpGrain.bat', icon:'🪟', run:'MtSharpGrain.bat'} };
-let currentOS = 'mac';
-
 const cursor = document.getElementById('cursor');
 const ripple = document.getElementById('ripple');
 const stage = document.getElementById('stage');
+const floatCaption = document.getElementById('floatCaption');
 const dots = [...document.querySelectorAll('.stepdot')];
-const caption = document.getElementById('caption');
 const screens = ['s1','s2','s3','s4','s5'].map(id=>document.getElementById(id));
+
+function updateFloatCaption(text) {
+  floatCaption.textContent = text;
+}
 
 function moveCursorTo(target, cb){
   const stageRect = stage.getBoundingClientRect();
@@ -300,6 +356,13 @@ function moveCursorTo(target, cb){
   const x = r.left - stageRect.left + r.width/2 - 10;
   const y = r.top - stageRect.top + r.height/2 - 10;
   cursor.style.transform = `translate(${x}px,${y}px)`;
+  
+  // Position float caption near cursor
+  const captionX = x + 40;
+  const captionY = y - 30;
+  floatCaption.style.left = captionX + 'px';
+  floatCaption.style.top = captionY + 'px';
+  
   setTimeout(()=>{
     ripple.classList.remove('go'); void ripple.offsetWidth; ripple.classList.add('go');
     if(cb) setTimeout(cb, 220);
@@ -311,23 +374,6 @@ function showScreen(i){
   dots.forEach((d,idx)=>d.classList.toggle('active', idx===i));
 }
 
-function applyOS(){
-  const o = OS[currentOS];
-  document.getElementById('binName').textContent = o.file;
-  document.getElementById('binName').previousElementSibling ? null : null;
-  document.querySelector('#binRow .ico').textContent = o.icon;
-  document.getElementById('cl1').textContent = '$ ' + o.run;
-}
-
-document.getElementById('osTabs').addEventListener('click', (e)=>{
-  const t = e.target.closest('.os-tab');
-  if(!t) return;
-  document.querySelectorAll('.os-tab').forEach(x=>x.classList.remove('active'));
-  t.classList.add('active');
-  currentOS = t.dataset.os;
-  applyOS();
-});
-
 let playing = false;
 async function play(){
   if(playing) return;
@@ -337,29 +383,31 @@ async function play(){
   // reset
   document.getElementById('assetsHead').classList.remove('open');
   document.getElementById('assetsList').classList.remove('open');
-  [...document.querySelectorAll('.console .line')].forEach(l=>l.classList.remove('show'));
-  document.getElementById('gamewin').classList.remove('show');
   showScreen(0);
   cursor.style.transition = 'none';
   cursor.style.transform = 'translate(40px,40px)';
+  floatCaption.style.opacity = '0';
   void cursor.offsetWidth;
   cursor.style.transition = '';
+  floatCaption.style.opacity = '1';
+  floatCaption.style.transition = 'opacity .3s';
   await sleep(300);
 
   // Step 1: open Assets, click zip
-  caption.textContent = 'Click "Assets" to expand the download list.';
+  updateFloatCaption('Click to expand Assets');
   await new Promise(res=>moveCursorTo(document.getElementById('assetsHead'), res));
   document.getElementById('assetsHead').classList.add('open');
   document.getElementById('assetsList').classList.add('open');
   await sleep(500);
-  caption.textContent = 'Click the .zip to download it.';
+  
+  updateFloatCaption('Download the .zip file');
   document.getElementById('zipName').classList.add('dl');
   await new Promise(res=>moveCursorTo(document.getElementById('zipName'), res));
   await sleep(400);
 
   // Step 2: downloads folder, double click zip
   showScreen(1);
-  caption.textContent = 'Find the .zip in your Downloads folder and open it.';
+  updateFloatCaption('Extract the .zip file');
   await sleep(400);
   await new Promise(res=>moveCursorTo(document.getElementById('zipFile'), res));
   await sleep(150);
@@ -368,25 +416,27 @@ async function play(){
 
   // Step 3: extracted folder, open bin
   showScreen(2);
-  caption.textContent = 'Open the extracted folder, then open the "bin" folder.';
+  updateFloatCaption('Open the bin folder');
   await sleep(400);
   await new Promise(res=>moveCursorTo(document.getElementById('binFolder'), res));
   await sleep(400);
 
-  // Step 4: bin folder, click launcher
+  // Step 4: bin folder with both options
   showScreen(3);
-  applyOS();
-  caption.textContent = currentOS==='win'
-    ? 'Double-click MtSharpGrain.bat to launch the game.'
-    : 'Double-click the MtSharpGrain launcher to start the game.';
-  await sleep(400);
+  updateFloatCaption('Choose your OS and double-click');
+  await sleep(600);
+  
+  updateFloatCaption('Windows: Run MtSharpGrain.bat');
+  await new Promise(res=>moveCursorTo(document.getElementById('batRow'), res));
+  await sleep(600);
+  
+  updateFloatCaption('macOS & Linux: Run MtSharpGrain');
   await new Promise(res=>moveCursorTo(document.getElementById('binRow'), res));
-  await sleep(400);
+  await sleep(600);
 
   // Step 5: launch
   showScreen(4);
-  applyOS();
-  caption.textContent = 'The game starts up.';
+  updateFloatCaption('Game launches!');
   await sleep(350);
   document.getElementById('cl1').classList.add('show');
   await sleep(350);
@@ -395,7 +445,7 @@ async function play(){
   document.getElementById('cl3').classList.add('show');
   await sleep(350);
   document.getElementById('gamewin').classList.add('show');
-  caption.textContent = 'Go play!';
+  updateFloatCaption('Have fun playing!');
 
   playing = false;
   document.getElementById('playBtn').textContent = '▸ Replay';
@@ -406,13 +456,11 @@ function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
 document.getElementById('playBtn').addEventListener('click', play);
 document.getElementById('skipBtn').addEventListener('click', ()=>{
   showScreen(4);
-  applyOS();
   [...document.querySelectorAll('.console .line')].forEach(l=>l.classList.add('show'));
   document.getElementById('gamewin').classList.add('show');
-  caption.textContent = 'Go play!';
+  updateFloatCaption('Have fun playing!');
 });
 
-applyOS();
 setTimeout(play, 500);
 </script>
 </body>
