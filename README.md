@@ -23,7 +23,7 @@ A sand box, non voxel game with slightly smooth interconnected blocks rather tha
 - **ANYONE** can make their own mod as modding is super easy if you have a basic understanding of JavaScript or just vibe coding with AI. 
 - **You** can make a mini game mod of whatever fun idea you once had!
 
-Like the idea? you can first go and try the [game](https://github.com/OxillenGlow/MtSharpGrain) and check out the [wiki](https://github.com/OxillenGlow/MtSharpGrain/wiki)
+Like the idea? you can first go and try the [game](https://github.com/OxillenGlow/MtSharpGrain) and check out the [wiki](https://github.com/OxillenGlow/MtSharpGrain/wiki). Mtsharpgrain is available to all operating systems: MacOS, Windows, and Linux(Debian derived)
 
 This game has already implemented: **semi smooth** node meshes & **JavaScript** for coding plugins and modifiers.
 
